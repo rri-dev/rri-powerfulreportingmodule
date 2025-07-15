@@ -52,6 +52,9 @@ def add_security_headers(response):
 @mcp.custom_route("/health", methods=["GET"])
 def health_check(request):
     """Health check endpoint for monitoring."""
+    import json
+    from starlette.responses import JSONResponse
+    
     try:
         connection_status = sf_client.test_connection()
         response_data = {
@@ -61,14 +64,15 @@ def health_check(request):
             "auth_required": auth_config.require_auth,
             "rate_limit_enabled": True
         }
-        return response_data
+        return JSONResponse(response_data)
     except Exception as e:
-        return {
+        error_data = {
             "status": "unhealthy",
             "error": str(e),
             "salesforce_connected": False,
             "auth_required": auth_config.require_auth
         }
+        return JSONResponse(error_data, status_code=500)
 
 @mcp.tool()
 def get_todays_opportunities() -> Dict[str, Any]:
