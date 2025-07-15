@@ -227,7 +227,8 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             
             Create a professional summary showing:
             1. Total closed won deals and revenue for today
-            2. Detailed summaries of the top 3 closed won deals with products/services
+            2. Detailed summaries of the top 3 closed won deals by value with products/services
+            3. If there are more than 3 deals, mention "(showing top 3 of X total)"
             
             Use emojis and Slack formatting. Focus on celebrating today's wins.
             
@@ -289,7 +290,11 @@ def format_opportunities_simple(all_opportunities: list, top_closed_won: list, s
         response += f" | *Revenue Won:* ${total_closed_won_revenue:,.0f}"
     
     if top_closed_won:
-        response += f"\n\n*Top {len(top_closed_won)} Deals:*\n"
+        # Show "Top 3 by Value" when there are more deals than displayed
+        if total_count > len(top_closed_won):
+            response += f"\n\n*Top {len(top_closed_won)} Deals by Value:* (showing {len(top_closed_won)} of {total_count})\n"
+        else:
+            response += f"\n\n*Deal Details:*\n"
         for opp in top_closed_won:
             amount_str = f"${opp.get('amount', 0):,.0f}" if opp.get('amount') else "Amount TBD"
             response += f"🏆 *{opp.get('name', 'Unknown')}* - {amount_str} - {opp.get('owner', 'Unknown')}\n"
