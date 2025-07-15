@@ -370,23 +370,37 @@ async def handle_prm_command(text: str, user_name: str) -> str:
         
         # Get event credits data
         elif "credit" in text.lower() or "ticket" in text.lower():
-            # Extract event name from command (everything after credits/tickets keyword)
-            text_lower = text.lower()
-            if "credit" in text_lower:
-                keyword_pos = text_lower.find("credit")
-                event_name = text[keyword_pos + 6:].strip()  # Skip "credit" + space
-            else:  # "ticket" in text_lower
-                keyword_pos = text_lower.find("ticket")
-                event_name = text[keyword_pos + 6:].strip()  # Skip "ticket" + space
+            # Extract event name from command using word-based splitting
+            import re
+            
+            # Use regex to find the keyword and extract everything after it
+            credit_match = re.search(r'\b(credits?|tickets?)\b\s+(.*)', text, re.IGNORECASE)
+            
+            if credit_match:
+                event_name = credit_match.group(2).strip()
+            else:
+                # Fallback: try simple word splitting
+                words = text.split()
+                event_name = ""
+                for i, word in enumerate(words):
+                    if word.lower() in ['credit', 'credits', 'ticket', 'tickets']:
+                        event_name = ' '.join(words[i + 1:])
+                        break
+            
+            # Debug logging to see what event name was extracted
+            logger.info(f"Credits command - Original text: '{text}', Extracted event name: '{event_name}'")
             
             if not event_name:
-                return "❓ Please provide an event name. Example: `/prm credits Tony Robbins Summit`"
+                return "❓ Please provide an event name after the command. Example: `/prm credits Tony Robbins Summit`"
             
             credits_data = _fetch_event_credits_by_name(event_name)
             
             if not credits_data.get('success'):
                 error_msg = credits_data.get('error', 'Unknown error')
-                return f"❌ Error fetching event credits: {error_msg}"
+                if 'No events found matching' in error_msg:
+                    return f"❌ {error_msg}\n\n💡 Try using a partial name like:\n• `/prm credits UPW`\n• `/prm credits Tony Robbins`\n• `/prm credits Date with Destiny`"
+                else:
+                    return f"❌ Error fetching event credits: {error_msg}"
             
             event_info = credits_data.get('event', {})
             credits = credits_data.get('credits', [])
