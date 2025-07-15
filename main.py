@@ -752,17 +752,33 @@ def _fetch_upcoming_events() -> Dict[str, Any]:
 def _fetch_event_credits_by_name(event_name: str) -> Dict[str, Any]:
     """Internal function to fetch event credits by event name."""
     try:
+        from lib.soql_utils import build_safe_like_query, sanitize_salesforce_id, validate_event_name
+        
+        # Validate input first
+        is_valid, error_msg = validate_event_name(event_name)
+        if not is_valid:
+            logger.warning(f"Invalid event name input: {error_msg}")
+            return {
+                "success": False,
+                "error": f"Invalid event name: {error_msg}",
+                "event": None,
+                "credits": [],
+                "summary_stats": {}
+            }
+        
         sf = sf_client.get_client()
         
-        # Step 1: Find Event__c by name (partial match)
-        event_search_soql = f"""
-        SELECT Id, Name
-        FROM Event__c 
-        WHERE Name LIKE '%{event_name}%'
-        ORDER BY Name ASC
-        LIMIT 5
-        """
+        # Step 1: Find Event__c by name (partial match) - using safe query builder
+        event_search_soql = build_safe_like_query(
+            field_name="Name",
+            search_term=event_name,
+            object_name="Event__c",
+            select_fields=["Id", "Name"],
+            order_by="Name ASC",
+            limit=5
+        )
         
+        logger.info(f"Executing safe SOQL query for event search: {event_search_soql}")
         event_result = sf.query(event_search_soql)
         
         if not event_result['records']:
@@ -781,14 +797,27 @@ def _fetch_event_credits_by_name(event_name: str) -> Dict[str, Any]:
         
         other_matches = [record['Name'] for record in event_result['records'][1:]]
         
-        # Step 2: Query Event_Credit__c for this event
+        # Step 2: Query Event_Credit__c for this event - using sanitized ID
+        try:
+            sanitized_event_id = sanitize_salesforce_id(event_id)
+        except ValueError as e:
+            logger.error(f"Invalid Salesforce ID returned from event query: {e}")
+            return {
+                "success": False,
+                "error": "Invalid event ID format",
+                "event": None,
+                "credits": [],
+                "summary_stats": {}
+            }
+        
         credits_soql = f"""
         SELECT Name, Status__c, Am_Dupe__c, Confirmed_Date__c
         FROM Event_Credit__c 
-        WHERE Related_Event__c = '{event_id}'
+        WHERE Related_Event__c = '{sanitized_event_id}'
         ORDER BY Name ASC
         """
         
+        logger.info(f"Executing safe SOQL query for credits: Related_Event__c = '{sanitized_event_id}'")
         credits_result = sf.query(credits_soql)
         
         # Format credits data
