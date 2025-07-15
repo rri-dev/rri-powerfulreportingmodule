@@ -131,7 +131,9 @@ async def slack_command(request: Request):
             response_url = form_data.get('response_url', [''])[0]
             
             # Dynamic loading message based on command type
-            if "event" in text.lower():
+            if "credit" in text.lower() or "ticket" in text.lower():
+                loading_message = "🔄 Fetching event credits... please wait"
+            elif "event" in text.lower():
                 loading_message = "🔄 Fetching upcoming events... please wait"
             elif "today" in text.lower() and "opportunit" in text.lower():
                 loading_message = "🔄 Fetching today's opportunities... please wait"
@@ -366,9 +368,107 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 # Fallback to simple formatting
                 return format_events_simple(events, summary_stats, user_name)
         
+        # Get event credits data
+        elif "credit" in text.lower() or "ticket" in text.lower():
+            # Extract event name from command (everything after credits/tickets keyword)
+            text_lower = text.lower()
+            if "credit" in text_lower:
+                keyword_pos = text_lower.find("credit")
+                event_name = text[keyword_pos + 6:].strip()  # Skip "credit" + space
+            else:  # "ticket" in text_lower
+                keyword_pos = text_lower.find("ticket")
+                event_name = text[keyword_pos + 6:].strip()  # Skip "ticket" + space
+            
+            if not event_name:
+                return "❓ Please provide an event name. Example: `/prm credits Tony Robbins Summit`"
+            
+            credits_data = _fetch_event_credits_by_name(event_name)
+            
+            if not credits_data.get('success'):
+                error_msg = credits_data.get('error', 'Unknown error')
+                return f"❌ Error fetching event credits: {error_msg}"
+            
+            event_info = credits_data.get('event', {})
+            credits = credits_data.get('credits', [])
+            summary_stats = credits_data.get('summary_stats', {})
+            
+            if not credits:
+                event_name_found = event_info.get('name', event_name)
+                return f"🎫 No credits found for event '{event_name_found}'."
+            
+            # Prepare data for GPT formatting
+            credits_summary = {
+                "event": event_info,
+                "summary": {
+                    "total_credits": summary_stats.get('total_credits', 0),
+                    "status_breakdown": summary_stats.get('status_breakdown', {}),
+                    "duplicate_count": summary_stats.get('duplicate_count', 0),
+                    "confirmed_count": summary_stats.get('confirmed_count', 0),
+                    "other_matches": summary_stats.get('other_matching_events', [])
+                },
+                "credits": credits[:15]  # Limit to first 15 credits for compact display
+            }
+            
+            # Use GPT to format the credits data
+            credits_prompt = f"""
+            Format the following event credits data for a Slack message. Be concise but informative.
+            
+            Data: {json.dumps(credits_summary, indent=2)}
+            
+            User: {user_name}
+            Request: {text}
+            
+            Create a professional summary showing:
+            1. Event name and total credits count
+            2. Status breakdown (how many in each status)
+            3. Duplicate and confirmed counts
+            4. Compact table of credits: Name | Status | Duplicate | Confirmed
+            5. If there are more than 15 credits, mention "(showing first 15 of [TOTAL])"
+            6. If other_matches exist, mention "Similar events found: [list]"
+            
+            Use emojis and Slack formatting for readability. KEEP IT COMPACT for mobile viewing.
+            
+            FORMATTING RULES FOR SLACK:
+            - Use *text* for emphasis (single asterisks only)
+            - NEVER use **double asterisks**
+            - Use compact table format
+            - Truncate long names to max 30 characters
+            - Use ✅ for confirmed, ❌ for not confirmed
+            - Use 🔄 for duplicates
+            - Keep each line under 80 characters
+            """
+            
+            try:
+                client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that formats event credits data for Slack messages. Keep responses concise and well-formatted."},
+                        {"role": "user", "content": credits_prompt}
+                    ],
+                    max_tokens=800,
+                    temperature=0.2
+                )
+                
+                formatted_response = response.choices[0].message.content
+                
+                # Fix any remaining bold formatting for Slack
+                formatted_response = formatted_response.replace('**', '*')
+                formatted_response = formatted_response.replace('###', '')
+                
+                # Log the access for security
+                security_logger.log_opportunity_access(user_name, len(credits), f'Slack command: {text}')
+                
+                return formatted_response
+                
+            except Exception as gpt_error:
+                logger.error(f"GPT error for event credits: {gpt_error}")
+                # Fallback to simple formatting
+                return format_event_credits_simple(credits, summary_stats, event_info, user_name)
+        
         else:
             # Handle other PRM commands
-            return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities created today\n• `/prm events` - Get upcoming events (next 3 months)"
+            return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities created today\n• `/prm events` - Get upcoming events (next 3 months)\n• `/prm credits [event name]` - Get event tickets/credits"
             
     except Exception as e:
         logger.error(f"PRM command error: {e}")
@@ -441,6 +541,65 @@ def format_events_simple(events: list, summary_stats: dict, user_name: str) -> s
     
     if total_count > 10:
         response += f"\n... and {total_count - 10} more events"
+    
+    return response
+
+def format_event_credits_simple(credits: list, summary_stats: dict, event_info: dict, user_name: str) -> str:
+    """Simple fallback formatting for event credits"""
+    if not credits:
+        event_name = event_info.get('name', 'Unknown Event')
+        return f"🎫 No credits found for event '{event_name}'."
+    
+    event_name = event_info.get('name', 'Unknown Event')
+    total_credits = summary_stats.get('total_credits', 0)
+    status_breakdown = summary_stats.get('status_breakdown', {})
+    duplicate_count = summary_stats.get('duplicate_count', 0)
+    confirmed_count = summary_stats.get('confirmed_count', 0)
+    other_matches = summary_stats.get('other_matching_events', [])
+    
+    response = f"🎫 *Event Credits* (requested by {user_name})\n\n"
+    response += f"*Event:* {event_name}\n"
+    response += f"*Total Credits:* {total_credits}\n"
+    
+    # Status breakdown
+    if status_breakdown:
+        response += f"*Status Breakdown:* "
+        status_parts = [f"{status}: {count}" for status, count in status_breakdown.items()]
+        response += ", ".join(status_parts) + "\n"
+    
+    # Duplicate and confirmed counts
+    if duplicate_count > 0:
+        response += f"*Duplicates:* {duplicate_count}\n"
+    if confirmed_count > 0:
+        response += f"*Confirmed:* {confirmed_count}\n"
+    
+    # Show other matching events if any
+    if other_matches:
+        response += f"*Similar Events:* {', '.join(other_matches[:3])}\n"
+    
+    response += "\n*Credit Details:*\n"
+    
+    # Show credits in a simple table format
+    for credit in credits[:15]:  # Limit to first 15 for compact display
+        name = credit.get('name', 'Unknown')
+        status = credit.get('status', 'Unknown')
+        is_duplicate = credit.get('is_duplicate', False)
+        confirmed_date = credit.get('confirmed_date', '')
+        
+        # Truncate long names for compact display
+        if len(name) > 30:
+            name = name[:27] + "..."
+        if len(status) > 15:
+            status = status[:12] + "..."
+        
+        # Format indicators
+        duplicate_indicator = "🔄" if is_duplicate else ""
+        confirmed_indicator = "✅" if confirmed_date else "❌"
+        
+        response += f"🎫 *{name}* | {status} | {duplicate_indicator} | {confirmed_indicator}\n"
+    
+    if total_credits > 15:
+        response += f"\n... and {total_credits - 15} more credits"
     
     return response
 
@@ -603,6 +762,109 @@ def _fetch_upcoming_events() -> Dict[str, Any]:
             "summary_stats": {}
         }
 
+def _fetch_event_credits_by_name(event_name: str) -> Dict[str, Any]:
+    """Internal function to fetch event credits by event name."""
+    try:
+        sf = sf_client.get_client()
+        
+        # Step 1: Find Event__c by name (partial match)
+        event_search_soql = f"""
+        SELECT Id, Name
+        FROM Event__c 
+        WHERE Name LIKE '%{event_name}%'
+        ORDER BY Name ASC
+        LIMIT 5
+        """
+        
+        event_result = sf.query(event_search_soql)
+        
+        if not event_result['records']:
+            return {
+                "success": False,
+                "error": f"No events found matching '{event_name}'",
+                "event": None,
+                "credits": [],
+                "summary_stats": {}
+            }
+        
+        # If multiple events found, use the first one but note others
+        target_event = event_result['records'][0]
+        event_id = target_event['Id']
+        event_full_name = target_event['Name']
+        
+        other_matches = [record['Name'] for record in event_result['records'][1:]]
+        
+        # Step 2: Query Event_Credit__c for this event
+        credits_soql = f"""
+        SELECT Name, Status__c, Am_Dupe__c, Confirmed_Date__c
+        FROM Event_Credit__c 
+        WHERE Related_Event__c = '{event_id}'
+        ORDER BY Name ASC
+        """
+        
+        credits_result = sf.query(credits_soql)
+        
+        # Format credits data
+        credits = []
+        for record in credits_result['records']:
+            credits.append({
+                "name": record.get('Name', ''),
+                "status": record.get('Status__c', ''),
+                "is_duplicate": record.get('Am_Dupe__c', False),
+                "confirmed_date": record.get('Confirmed_Date__c', '')
+            })
+        
+        # Calculate summary statistics
+        total_credits = len(credits)
+        status_breakdown = {}
+        duplicate_count = 0
+        confirmed_count = 0
+        
+        for credit in credits:
+            # Status breakdown
+            status = credit['status'] or 'Unknown'
+            status_breakdown[status] = status_breakdown.get(status, 0) + 1
+            
+            # Count duplicates
+            if credit['is_duplicate']:
+                duplicate_count += 1
+            
+            # Count confirmed
+            if credit['confirmed_date']:
+                confirmed_count += 1
+        
+        summary_stats = {
+            "total_credits": total_credits,
+            "status_breakdown": status_breakdown,
+            "duplicate_count": duplicate_count,
+            "confirmed_count": confirmed_count,
+            "other_matching_events": other_matches
+        }
+        
+        # Log event credits access for security monitoring
+        security_logger.log_opportunity_access('authenticated_user', total_credits, f'Event credits query: {event_full_name}')
+        
+        return {
+            "success": True,
+            "event": {
+                "id": event_id,
+                "name": event_full_name
+            },
+            "credits": credits,
+            "summary_stats": summary_stats,
+            "summary": f"Found {total_credits} credits for event '{event_full_name}'"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get event credits for '{event_name}': {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "event": None,
+            "credits": [],
+            "summary_stats": {}
+        }
+
 @mcp.tool()
 def get_todays_opportunities() -> Dict[str, Any]:
     """Get all opportunities created today with their name, stage, and owner information."""
@@ -610,8 +872,13 @@ def get_todays_opportunities() -> Dict[str, Any]:
 
 @mcp.tool()
 def get_upcoming_events() -> Dict[str, Any]:
-    """Get all upcoming events from Event__c table in the next 6 months with name, dates, type, and location."""
+    """Get all upcoming events from Event__c table in the next 3 months with name, dates, type, and location."""
     return _fetch_upcoming_events()
+
+@mcp.tool()
+def get_event_credits(event_name: str) -> Dict[str, Any]:
+    """Get event credits (tickets) for a specific event by name. Searches for events matching the name and returns credit details including status, duplicates, and confirmation dates."""
+    return _fetch_event_credits_by_name(event_name)
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
