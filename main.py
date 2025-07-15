@@ -190,14 +190,18 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             if not all_opportunities:
                 return "📊 No Closed Won opportunities were created today."
             
-            # Summarize data for GPT to avoid token limits
+            # Summarize data for GPT to avoid token limits - DO NOT send all 304+ records
             summary_data = {
-                "summary_stats": summary_stats,
-                "top_closed_won_details": []
+                "daily_summary": {
+                    "total_deals_closed_today": summary_stats.get('total_count', 0),
+                    "total_revenue_won_today": summary_stats.get('total_closed_won_revenue', 0),
+                    "showing_top_deals": min(len(top_closed_won), 3)
+                },
+                "top_deals_details": []
             }
             
             # Only include detailed product info for top 3 closed won deals
-            for opp in top_closed_won:
+            for opp in top_closed_won[:3]:  # Ensure only top 3
                 # Summarize products to reduce token usage
                 product_summary = ""
                 if opp.get('products'):
@@ -208,13 +212,16 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                     else:
                         product_summary = ', '.join(product_names)
                 
-                summary_data["top_closed_won_details"].append({
+                summary_data["top_deals_details"].append({
                     "name": opp['name'],
-                    "stage": opp['stage'],
                     "owner": opp['owner'],
                     "amount": opp.get('amount'),
                     "products": product_summary
                 })
+            
+            # Log the data being sent to GPT for debugging
+            logger.info(f"GPT input summary_stats: {summary_stats}")
+            logger.info(f"GPT input data size: all_opportunities={len(all_opportunities)}, top_closed_won={len(top_closed_won)}")
             
             # Use GPT to format the response
             gpt_prompt = f"""
@@ -225,12 +232,15 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             User: {user_name}
             Request: {text}
             
-            Create a professional summary showing:
-            1. Total closed won deals and revenue for today
-            2. Detailed summaries of the top 3 closed won deals by value with products/services
-            3. If there are more than 3 deals, mention "(showing top 3 of X total)"
+            IMPORTANT: You must show the EXACT total count from daily_summary.total_deals_closed_today
             
-            Use emojis and Slack formatting. Focus on celebrating today's wins.
+            Create a professional summary showing:
+            1. TOTAL closed won deals for today (use exact number from daily_summary.total_deals_closed_today)
+            2. TOTAL revenue won today (use exact number from daily_summary.total_revenue_won_today)  
+            3. Detailed summaries of top 3 deals with products (from top_deals_details)
+            4. If total > 3, say "(showing top 3 of [TOTAL] deals)"
+            
+            Use emojis and Slack formatting. The total count MUST be accurate.
             
             IMPORTANT FORMATTING RULES FOR SLACK:
             - Use *text* for emphasis (single asterisks only)
@@ -256,6 +266,12 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 # Fix any remaining bold formatting for Slack
                 formatted_response = formatted_response.replace('**', '*')
                 formatted_response = formatted_response.replace('###', '')
+                
+                # Verify GPT didn't mess up the total count
+                expected_total = summary_stats.get('total_count', 0)
+                if expected_total > 10 and str(expected_total) not in formatted_response:
+                    logger.warning(f"GPT response may have wrong total. Expected: {expected_total}, Response: {formatted_response[:200]}...")
+                    # Could add fallback logic here if needed
                 
                 # Log the access for security
                 security_logger.log_opportunity_access(user_name, len(all_opportunities), f'Slack command: {text}')
