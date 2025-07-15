@@ -188,18 +188,44 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             if not opportunities:
                 return "📊 No opportunities were created today."
             
+            # Summarize data for GPT to avoid token limits
+            summary_data = {
+                "total_count": len(opportunities),
+                "total_value": sum(opp.get('amount', 0) or 0 for opp in opportunities),
+                "opportunities": []
+            }
+            
+            for opp in opportunities:
+                # Summarize products to reduce token usage
+                product_summary = ""
+                if opp.get('products'):
+                    product_names = [p['name'] for p in opp['products'][:3]]  # Limit to top 3
+                    total_products = len(opp['products'])
+                    if total_products > 3:
+                        product_summary = f"{', '.join(product_names)} (+{total_products-3} more)"
+                    else:
+                        product_summary = ', '.join(product_names)
+                
+                summary_data["opportunities"].append({
+                    "name": opp['name'],
+                    "stage": opp['stage'],
+                    "owner": opp['owner'],
+                    "amount": opp.get('amount'),
+                    "products": product_summary
+                })
+            
             # Use GPT to format the response
             gpt_prompt = f"""
             Format the following opportunities data for a Slack message. Be concise but informative.
             
-            Data: {json.dumps(opportunities, indent=2)}
+            Data: {json.dumps(summary_data, indent=2)}
             
             User: {user_name}
             Request: {text}
             
             Create a professional, easy-to-read summary. Use emojis and formatting appropriate for Slack.
             Include key metrics like total count, stages, and highlight any large deals.
-            For each opportunity, provide a 2-sentence summary of the products/services included.
+            For each opportunity, provide a 2-sentence summary mentioning the products/services listed.
             """
             
             try:
@@ -207,11 +233,11 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
-                        {"role": "system", "content": "You are a helpful sales assistant that formats Salesforce data for Slack messages."},
+                        {"role": "system", "content": "You are a helpful sales assistant that formats Salesforce data for Slack messages. Keep responses concise."},
                         {"role": "user", "content": gpt_prompt}
                     ],
-                    max_tokens=1000,
-                    temperature=0.3
+                    max_tokens=500,
+                    temperature=0.2
                 )
                 
                 formatted_response = response.choices[0].message.content
