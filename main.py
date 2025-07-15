@@ -410,7 +410,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 event_name_found = event_info.get('name', event_name)
                 return f"🎫 No credits found for event '{event_name_found}'."
             
-            # Prepare data for GPT formatting
+            # Prepare summary data for GPT formatting (no individual credits)
             credits_summary = {
                 "event": event_info,
                 "summary": {
@@ -419,37 +419,34 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                     "duplicate_count": summary_stats.get('duplicate_count', 0),
                     "confirmed_count": summary_stats.get('confirmed_count', 0),
                     "other_matches": summary_stats.get('other_matching_events', [])
-                },
-                "credits": credits[:15]  # Limit to first 15 credits for compact display
+                }
             }
             
             # Use GPT to format the credits data
             credits_prompt = f"""
-            Format the following event credits data for a Slack message. Be concise but informative.
+            Format the following event credits summary data for a Slack message. Be concise but informative.
             
             Data: {json.dumps(credits_summary, indent=2)}
             
             User: {user_name}
             Request: {text}
             
-            Create a professional summary showing:
+            Create a professional summary showing ONLY:
             1. Event name and total credits count
             2. Status breakdown (how many in each status)
             3. Duplicate and confirmed counts
-            4. Compact table of credits: Name | Status | Duplicate | Confirmed
-            5. If there are more than 15 credits, mention "(showing first 15 of [TOTAL])"
-            6. If other_matches exist, mention "Similar events found: [list]"
+            4. If other_matches exist, mention "Similar events found: [list]"
+            
+            DO NOT include individual credit details or tables. Focus on summary statistics only.
             
             Use emojis and Slack formatting for readability. KEEP IT COMPACT for mobile viewing.
             
             FORMATTING RULES FOR SLACK:
             - Use *text* for emphasis (single asterisks only)
             - NEVER use **double asterisks**
-            - Use compact table format
-            - Truncate long names to max 30 characters
-            - Use ✅ for confirmed, ❌ for not confirmed
-            - Use 🔄 for duplicates
-            - Keep each line under 80 characters
+            - Use clean summary format with bullet points or sections
+            - Keep the response concise and focused on key metrics
+            - Use 🎫 for event credits, 🔄 for duplicates, ✅ for confirmed
             """
             
             try:
@@ -590,30 +587,6 @@ def format_event_credits_simple(credits: list, summary_stats: dict, event_info: 
     # Show other matching events if any
     if other_matches:
         response += f"*Similar Events:* {', '.join(other_matches[:3])}\n"
-    
-    response += "\n*Credit Details:*\n"
-    
-    # Show credits in a simple table format
-    for credit in credits[:15]:  # Limit to first 15 for compact display
-        name = credit.get('name', 'Unknown')
-        status = credit.get('status', 'Unknown')
-        is_duplicate = credit.get('is_duplicate', False)
-        confirmed_date = credit.get('confirmed_date', '')
-        
-        # Truncate long names for compact display
-        if len(name) > 30:
-            name = name[:27] + "..."
-        if len(status) > 15:
-            status = status[:12] + "..."
-        
-        # Format indicators
-        duplicate_indicator = "🔄" if is_duplicate else ""
-        confirmed_indicator = "✅" if confirmed_date else "❌"
-        
-        response += f"🎫 *{name}* | {status} | {duplicate_indicator} | {confirmed_indicator}\n"
-    
-    if total_credits > 15:
-        response += f"\n... and {total_credits - 15} more credits"
     
     return response
 
@@ -891,7 +864,7 @@ def get_upcoming_events() -> Dict[str, Any]:
 
 @mcp.tool()
 def get_event_credits(event_name: str) -> Dict[str, Any]:
-    """Get event credits (tickets) for a specific event by name. Searches for events matching the name and returns credit details including status, duplicates, and confirmation dates."""
+    """Get event credits (tickets) summary for a specific event by name. Searches for events matching the name and returns summary statistics including total count, status breakdown, duplicate count, and confirmation count."""
     return _fetch_event_credits_by_name(event_name)
 
 if __name__ == "__main__":
