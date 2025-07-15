@@ -227,10 +227,11 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             Include key metrics like total count, stages, and highlight any large deals.
             For each opportunity, provide a 2-sentence summary mentioning the products/services listed.
             
-            Use Slack markdown formatting:
-            - *text* for italic (not **text**)
-            - Use line breaks and bullet points for readability
-            - Do not use **bold** formatting as it doesn't work in Slack
+            IMPORTANT FORMATTING RULES FOR SLACK:
+            - Use *text* for emphasis (single asterisks only)
+            - NEVER use **double asterisks** - they don't work in Slack
+            - Use simple bullet points with •
+            - Keep it clean and readable
             """
             
             try:
@@ -246,6 +247,10 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 )
                 
                 formatted_response = response.choices[0].message.content
+                
+                # Fix any remaining bold formatting for Slack
+                formatted_response = formatted_response.replace('**', '*')
+                formatted_response = formatted_response.replace('###', '')
                 
                 # Log the access for security
                 security_logger.log_opportunity_access(user_name, len(opportunities), f'Slack command: {text}')
