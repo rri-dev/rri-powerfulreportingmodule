@@ -315,7 +315,7 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
         all_opportunities_soql = """
         SELECT Id, Name, StageName, Owner.Name, CreatedDate, Amount, CloseDate
         FROM Opportunity 
-        WHERE CreatedDate = TODAY
+        WHERE CreatedDate = TODAY AND StageName = 'Closed Won'
         ORDER BY CreatedDate DESC
         """
         
