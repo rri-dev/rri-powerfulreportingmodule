@@ -50,7 +50,7 @@ def add_security_headers(response):
     return response
 
 @mcp.custom_route("/health", methods=["GET"])
-def health_check():
+def health_check(request):
     """Health check endpoint for monitoring."""
     try:
         connection_status = sf_client.test_connection()
