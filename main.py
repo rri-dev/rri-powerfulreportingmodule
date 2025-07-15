@@ -127,10 +127,15 @@ async def slack_command(request: Request):
         
         # Handle /prm command
         if command == '/prm':
-            response_text = await handle_prm_command(text, user_name)
+            # Respond immediately to avoid timeout
+            response_url = form_data.get('response_url', [''])[0]
+            
+            # Start background processing
+            asyncio.create_task(process_prm_command_async(text, user_name, response_url))
+            
             return JSONResponse({
                 "response_type": "in_channel",
-                "text": response_text
+                "text": "🔄 Fetching today's opportunities... please wait"
             })
         else:
             return JSONResponse({
@@ -142,6 +147,31 @@ async def slack_command(request: Request):
         return JSONResponse({
             "text": "Sorry, there was an error processing your request."
         }, status_code=500)
+
+async def process_prm_command_async(text: str, user_name: str, response_url: str):
+    """Process PRM command asynchronously and send result to Slack"""
+    import httpx
+    
+    try:
+        response_text = await handle_prm_command(text, user_name)
+        
+        # Send the result back to Slack
+        async with httpx.AsyncClient() as client:
+            await client.post(response_url, json={
+                "response_type": "in_channel",
+                "text": response_text,
+                "replace_original": True
+            })
+            
+    except Exception as e:
+        logger.error(f"Async PRM command error: {e}")
+        # Send error response
+        async with httpx.AsyncClient() as client:
+            await client.post(response_url, json={
+                "response_type": "in_channel", 
+                "text": f"❌ Error processing request: {str(e)}",
+                "replace_original": True
+            })
 
 async def handle_prm_command(text: str, user_name: str) -> str:
     """Handle PRM command with GPT integration"""
