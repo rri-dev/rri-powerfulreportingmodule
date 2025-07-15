@@ -199,6 +199,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             
             Create a professional, easy-to-read summary. Use emojis and formatting appropriate for Slack.
             Include key metrics like total count, stages, and highlight any large deals.
+            For each opportunity, provide a 2-sentence summary of the products/services included.
             """
             
             try:
@@ -270,9 +271,12 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
     try:
         sf = sf_client.get_client()
         
-        # SOQL query to get opportunities created today
+        # SOQL query to get opportunities created today with products
         soql = """
-        SELECT Id, Name, StageName, Owner.Name, CreatedDate, Amount, CloseDate
+        SELECT Id, Name, StageName, Owner.Name, CreatedDate, Amount, CloseDate,
+               (SELECT Id, Product2.Name, Product2.Description, Quantity, UnitPrice, TotalPrice 
+                FROM OpportunityLineItems 
+                ORDER BY TotalPrice DESC)
         FROM Opportunity 
         WHERE CreatedDate = TODAY
         ORDER BY CreatedDate DESC
@@ -283,6 +287,18 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
         # Format the results for better readability
         opportunities = []
         for record in result['records']:
+            # Extract product information
+            products = []
+            if record.get('OpportunityLineItems') and record['OpportunityLineItems'].get('records'):
+                for line_item in record['OpportunityLineItems']['records']:
+                    products.append({
+                        "name": line_item['Product2']['Name'],
+                        "description": line_item['Product2'].get('Description', ''),
+                        "quantity": line_item.get('Quantity', 0),
+                        "unit_price": line_item.get('UnitPrice', 0),
+                        "total_price": line_item.get('TotalPrice', 0)
+                    })
+            
             opportunities.append({
                 "id": record['Id'],
                 "name": record['Name'],
@@ -290,7 +306,8 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
                 "owner": record['Owner']['Name'],
                 "amount": record.get('Amount'),
                 "close_date": record.get('CloseDate'),
-                "created_date": record['CreatedDate']
+                "created_date": record['CreatedDate'],
+                "products": products
             })
         
         # Log opportunity access for security monitoring
