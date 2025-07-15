@@ -3,3 +3,5 @@ simple-salesforce
 python-dotenv
 gunicorn>=21.0.0
 uvicorn[standard]>=0.24.0
+openai>=1.0.0
+slack-sdk>=3.19.0

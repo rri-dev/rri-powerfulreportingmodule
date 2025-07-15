@@ -57,6 +57,14 @@
       "description": "Logging level",
       "value": "info",
       "required": false
+    },
+    "OPENAI_API_KEY": {
+      "description": "OpenAI API key for GPT integration",
+      "required": true
+    },
+    "SLACK_SIGNING_SECRET": {
+      "description": "Slack app signing secret for webhook verification",
+      "required": false
     }
   },
   "formation": {
