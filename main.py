@@ -183,19 +183,21 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             if not opportunities_data.get('success'):
                 return f"❌ Error fetching opportunities: {opportunities_data.get('error', 'Unknown error')}"
             
-            opportunities = opportunities_data.get('opportunities', [])
+            all_opportunities = opportunities_data.get('all_opportunities', [])
+            top_closed_won = opportunities_data.get('top_closed_won', [])
+            summary_stats = opportunities_data.get('summary_stats', {})
             
-            if not opportunities:
-                return "📊 No Closed Won opportunities were created today."
+            if not all_opportunities:
+                return "📊 No opportunities were created today."
             
             # Summarize data for GPT to avoid token limits
             summary_data = {
-                "total_count": len(opportunities),
-                "total_value": sum(opp.get('amount', 0) or 0 for opp in opportunities),
-                "opportunities": []
+                "summary_stats": summary_stats,
+                "top_closed_won_details": []
             }
             
-            for opp in opportunities:
+            # Only include detailed product info for top 3 closed won deals
+            for opp in top_closed_won:
                 # Summarize products to reduce token usage
                 product_summary = ""
                 if opp.get('products'):
@@ -206,7 +208,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                     else:
                         product_summary = ', '.join(product_names)
                 
-                summary_data["opportunities"].append({
+                summary_data["top_closed_won_details"].append({
                     "name": opp['name'],
                     "stage": opp['stage'],
                     "owner": opp['owner'],
@@ -216,16 +218,19 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             
             # Use GPT to format the response
             gpt_prompt = f"""
-            Format the following CLOSED WON opportunities data for a Slack message. Be concise but informative.
+            Format the following sales activity data for a Slack message. Be concise but informative.
             
             Data: {json.dumps(summary_data, indent=2)}
             
             User: {user_name}
             Request: {text}
             
-            Create a professional, easy-to-read summary of today's top 3 Closed Won deals. Use emojis and formatting appropriate for Slack.
-            Include total revenue won today and highlight the largest deals.
-            For each opportunity, provide a 2-sentence summary mentioning the products/services and deal value.
+            Create a professional summary showing:
+            1. Overall activity summary (total opportunities, stages breakdown, pipeline value)  
+            2. Revenue won today from closed deals
+            3. Detailed summaries of the top 3 closed won deals with products/services
+            
+            Use emojis and Slack formatting. Focus on celebrating wins while showing complete picture.
             
             IMPORTANT FORMATTING RULES FOR SLACK:
             - Use *text* for emphasis (single asterisks only)
@@ -260,7 +265,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             except Exception as gpt_error:
                 logger.error(f"GPT error: {gpt_error}")
                 # Fallback to simple formatting
-                return format_opportunities_simple(opportunities, user_name)
+                return format_opportunities_simple(all_opportunities, top_closed_won, summary_stats, user_name)
         
         else:
             # Handle other PRM commands
@@ -270,30 +275,34 @@ async def handle_prm_command(text: str, user_name: str) -> str:
         logger.error(f"PRM command error: {e}")
         return f"❌ Error processing request: {str(e)}"
 
-def format_opportunities_simple(opportunities: list, user_name: str) -> str:
+def format_opportunities_simple(all_opportunities: list, top_closed_won: list, summary_stats: dict, user_name: str) -> str:
     """Simple fallback formatting for opportunities"""
-    if not opportunities:
+    if not all_opportunities:
         return "📊 No opportunities found."
     
-    total_count = len(opportunities)
-    total_amount = sum(opp.get('amount', 0) or 0 for opp in opportunities)
+    total_count = summary_stats.get('total_count', 0)
+    total_pipeline_value = summary_stats.get('total_pipeline_value', 0)
+    total_closed_won_revenue = summary_stats.get('total_closed_won_revenue', 0)
+    stages_breakdown = summary_stats.get('stages_breakdown', {})
     
-    # Group by stage
-    stages = {}
-    for opp in opportunities:
-        stage = opp.get('stage', 'Unknown')
-        stages[stage] = stages.get(stage, 0) + 1
+    response = f"📊 *Today's Sales Activity Summary* (requested by {user_name})\n\n"
+    response += f"*Total Opportunities:* {total_count}"
     
-    response = f"🎉 *Today's Closed Won Deals* (requested by {user_name})\n\n"
-    response += f"*Total Deals Won:* {total_count}"
+    if total_pipeline_value > 0:
+        response += f" | *Pipeline Value:* ${total_pipeline_value:,.0f}"
     
-    if total_amount > 0:
-        response += f" | *Total Revenue:* ${total_amount:,.0f}"
+    if total_closed_won_revenue > 0:
+        response += f" | *Revenue Won:* ${total_closed_won_revenue:,.0f}"
     
-    response += "\n\n*Top Deals Won Today:*\n"
-    for opp in opportunities:
-        amount_str = f"${opp.get('amount', 0):,.0f}" if opp.get('amount') else "Amount TBD"
-        response += f"🏆 *{opp.get('name', 'Unknown')}* - {amount_str} - {opp.get('owner', 'Unknown')}\n"
+    response += "\n\n*By Stage:*\n"
+    for stage, count in stages_breakdown.items():
+        response += f"• {stage}: {count}\n"
+    
+    if top_closed_won:
+        response += f"\n🎉 *Top {len(top_closed_won)} Deals Closed Today:*\n"
+        for opp in top_closed_won:
+            amount_str = f"${opp.get('amount', 0):,.0f}" if opp.get('amount') else "Amount TBD"
+            response += f"🏆 *{opp.get('name', 'Unknown')}* - {amount_str} - {opp.get('owner', 'Unknown')}\n"
     
     return response
 
@@ -302,8 +311,18 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
     try:
         sf = sf_client.get_client()
         
-        # SOQL query to get closed won opportunities created today with products
-        soql = """
+        # Query 1: Get ALL opportunities created today for summary
+        all_opportunities_soql = """
+        SELECT Id, Name, StageName, Owner.Name, CreatedDate, Amount, CloseDate
+        FROM Opportunity 
+        WHERE CreatedDate = TODAY
+        ORDER BY CreatedDate DESC
+        """
+        
+        all_result = sf.query(all_opportunities_soql)
+        
+        # Query 2: Get top 3 closed won opportunities with products
+        closed_won_soql = """
         SELECT Id, Name, StageName, Owner.Name, CreatedDate, Amount, CloseDate,
                (SELECT Id, Product2.Name, Product2.Description, Quantity, UnitPrice, TotalPrice 
                 FROM OpportunityLineItems 
@@ -314,11 +333,24 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
         LIMIT 3
         """
         
-        result = sf.query(soql)
+        closed_won_result = sf.query(closed_won_soql)
         
-        # Format the results for better readability
-        opportunities = []
-        for record in result['records']:
+        # Format ALL opportunities for summary stats
+        all_opportunities = []
+        for record in all_result['records']:
+            all_opportunities.append({
+                "id": record['Id'],
+                "name": record['Name'],
+                "stage": record['StageName'],
+                "owner": record['Owner']['Name'],
+                "amount": record.get('Amount'),
+                "close_date": record.get('CloseDate'),
+                "created_date": record['CreatedDate']
+            })
+        
+        # Format top 3 closed won opportunities with product details
+        top_closed_won = []
+        for record in closed_won_result['records']:
             # Extract product information
             products = []
             if record.get('OpportunityLineItems') and record['OpportunityLineItems'].get('records'):
@@ -331,7 +363,7 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
                         "total_price": line_item.get('TotalPrice', 0)
                     })
             
-            opportunities.append({
+            top_closed_won.append({
                 "id": record['Id'],
                 "name": record['Name'],
                 "stage": record['StageName'],
@@ -342,14 +374,34 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
                 "products": products
             })
         
+        # Calculate summary statistics
+        stages_breakdown = {}
+        total_pipeline_value = 0
+        total_closed_won_revenue = 0
+        
+        for opp in all_opportunities:
+            stage = opp['stage']
+            stages_breakdown[stage] = stages_breakdown.get(stage, 0) + 1
+            if opp.get('amount'):
+                total_pipeline_value += opp['amount']
+                if stage == 'Closed Won':
+                    total_closed_won_revenue += opp['amount']
+        
         # Log opportunity access for security monitoring
-        security_logger.log_opportunity_access('authenticated_user', len(opportunities))
+        security_logger.log_opportunity_access('authenticated_user', len(all_opportunities))
         
         return {
             "success": True,
-            "total_count": result['totalSize'],
-            "opportunities": opportunities,
-            "summary": f"Found {len(opportunities)} Closed Won opportunities created today"
+            "all_opportunities": all_opportunities,
+            "top_closed_won": top_closed_won,
+            "summary_stats": {
+                "total_count": len(all_opportunities),
+                "stages_breakdown": stages_breakdown,
+                "total_pipeline_value": total_pipeline_value,
+                "total_closed_won_revenue": total_closed_won_revenue,
+                "closed_won_count": len(top_closed_won)
+            },
+            "summary": f"Found {len(all_opportunities)} opportunities created today, {len(top_closed_won)} closed won"
         }
         
     except Exception as e:
@@ -357,7 +409,9 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
         return {
             "success": False,
             "error": str(e),
-            "opportunities": []
+            "all_opportunities": [],
+            "top_closed_won": [],
+            "summary_stats": {}
         }
 
 @mcp.tool()
