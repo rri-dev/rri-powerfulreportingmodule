@@ -283,9 +283,82 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 # Fallback to simple formatting
                 return format_opportunities_simple(all_opportunities, top_closed_won, summary_stats, user_name)
         
+        # Get events data
+        elif "event" in text.lower():
+            events_data = _fetch_upcoming_events()
+            
+            if not events_data.get('success'):
+                return f"❌ Error fetching events: {events_data.get('error', 'Unknown error')}"
+            
+            events = events_data.get('events', [])
+            summary_stats = events_data.get('summary_stats', {})
+            
+            if not events:
+                return "📅 No upcoming events found in the next 6 months."
+            
+            # Prepare data for GPT formatting
+            events_summary = {
+                "summary": {
+                    "total_events": summary_stats.get('total_count', 0),
+                    "date_range": summary_stats.get('date_range', 'next 6 months')
+                },
+                "events": events[:20]  # Limit to first 20 events to avoid token overflow
+            }
+            
+            # Use GPT to format the events as a table
+            events_prompt = f"""
+            Format the following events data for a Slack message as a clean table. Be concise but informative.
+            
+            Data: {json.dumps(events_summary, indent=2)}
+            
+            User: {user_name}
+            Request: {text}
+            
+            Create a professional table showing:
+            1. Total number of events in the next 6 months
+            2. A table with columns: Event Name, Start Date, End Date, Type, Location
+            3. If there are more than 20 events, mention "(showing first 20 of [TOTAL])"
+            
+            Use emojis and Slack formatting for readability.
+            
+            FORMATTING RULES FOR SLACK:
+            - Use *text* for emphasis (single asterisks only)
+            - NEVER use **double asterisks**
+            - Use simple formatting for tables
+            - Keep it clean and readable
+            """
+            
+            try:
+                client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that formats event data for Slack messages. Keep responses concise and well-formatted."},
+                        {"role": "user", "content": events_prompt}
+                    ],
+                    max_tokens=800,
+                    temperature=0.2
+                )
+                
+                formatted_response = response.choices[0].message.content
+                
+                # Fix any remaining bold formatting for Slack
+                formatted_response = formatted_response.replace('**', '*')
+                formatted_response = formatted_response.replace('###', '')
+                
+                # Log the access for security
+                security_logger.log_opportunity_access(user_name, len(events), f'Slack command: {text}')
+                
+                return formatted_response
+                
+            except Exception as gpt_error:
+                logger.error(f"GPT error for events: {gpt_error}")
+                # Fallback to simple formatting
+                return format_events_simple(events, summary_stats, user_name)
+        
         else:
             # Handle other PRM commands
-            return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities created today"
+            return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities created today\n• `/prm events` - Get upcoming events (next 6 months)"
             
     except Exception as e:
         logger.error(f"PRM command error: {e}")
@@ -314,6 +387,42 @@ def format_opportunities_simple(all_opportunities: list, top_closed_won: list, s
         for opp in top_closed_won:
             amount_str = f"${opp.get('amount', 0):,.0f}" if opp.get('amount') else "Amount TBD"
             response += f"🏆 *{opp.get('name', 'Unknown')}* - {amount_str} - {opp.get('owner', 'Unknown')}\n"
+    
+    return response
+
+def format_events_simple(events: list, summary_stats: dict, user_name: str) -> str:
+    """Simple fallback formatting for events"""
+    if not events:
+        return "📅 No upcoming events found in the next 6 months."
+    
+    total_count = summary_stats.get('total_count', 0)
+    date_range = summary_stats.get('date_range', 'next 6 months')
+    
+    response = f"📅 *Upcoming Events* (requested by {user_name})\n\n"
+    response += f"*Total Events:* {total_count} in the {date_range}\n\n"
+    
+    # Show events in a simple table format
+    response += "*Event Schedule:*\n"
+    for event in events[:15]:  # Limit to first 15 for readability
+        name = event.get('name', 'Unknown Event')
+        start_date = event.get('start_date', 'TBD')
+        event_type = event.get('type', 'Unknown')
+        location = event.get('location', 'TBD')
+        
+        # Format date if it's provided
+        if start_date and start_date != 'TBD':
+            try:
+                from datetime import datetime
+                # Assume the date is in ISO format from Salesforce
+                date_obj = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                start_date = date_obj.strftime('%m/%d/%Y')
+            except:
+                pass  # Keep original format if parsing fails
+        
+        response += f"📅 *{name}* | {start_date} | {event_type} | {location}\n"
+    
+    if total_count > 15:
+        response += f"\n... and {total_count - 15} more events"
     
     return response
 
@@ -425,10 +534,66 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
             "summary_stats": {}
         }
 
+def _fetch_upcoming_events() -> Dict[str, Any]:
+    """Internal function to fetch upcoming events from Event__c table."""
+    try:
+        sf = sf_client.get_client()
+        
+        # Query upcoming events in next 6 months
+        events_soql = """
+        SELECT Name, Start_Date__c, End_Date__c, Type__c, Location__c
+        FROM Event__c 
+        WHERE Start_Date__c >= TODAY AND Start_Date__c <= NEXT_N_MONTHS:6
+        ORDER BY Start_Date__c ASC
+        """
+        
+        result = sf.query(events_soql)
+        
+        # Format events data
+        events = []
+        for record in result['records']:
+            events.append({
+                "name": record.get('Name', ''),
+                "start_date": record.get('Start_Date__c', ''),
+                "end_date": record.get('End_Date__c', ''),
+                "type": record.get('Type__c', ''),
+                "location": record.get('Location__c', '')
+            })
+        
+        # Calculate summary statistics
+        summary_stats = {
+            "total_count": len(events),
+            "date_range": "next 6 months"
+        }
+        
+        # Log event access for security monitoring
+        security_logger.log_opportunity_access('authenticated_user', len(events), 'Events query')
+        
+        return {
+            "success": True,
+            "events": events,
+            "summary_stats": summary_stats,
+            "summary": f"Found {len(events)} upcoming events in the next 6 months"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get upcoming events: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "events": [],
+            "summary_stats": {}
+        }
+
 @mcp.tool()
 def get_todays_opportunities() -> Dict[str, Any]:
     """Get all opportunities created today with their name, stage, and owner information."""
     return _fetch_todays_opportunities()
+
+@mcp.tool()
+def get_upcoming_events() -> Dict[str, Any]:
+    """Get all upcoming events from Event__c table in the next 6 months with name, dates, type, and location."""
+    return _fetch_upcoming_events()
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
