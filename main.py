@@ -148,7 +148,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
     try:
         # Get opportunities data
         if "today" in text.lower() and "opportunit" in text.lower():
-            opportunities_data = get_todays_opportunities()
+            opportunities_data = _fetch_todays_opportunities()
             
             if not opportunities_data.get('success'):
                 return f"❌ Error fetching opportunities: {opportunities_data.get('error', 'Unknown error')}"
@@ -235,9 +235,8 @@ def format_opportunities_simple(opportunities: list, user_name: str) -> str:
     
     return response
 
-@mcp.tool()
-def get_todays_opportunities() -> Dict[str, Any]:
-    """Get all opportunities created today with their name, stage, and owner information."""
+def _fetch_todays_opportunities() -> Dict[str, Any]:
+    """Internal function to fetch opportunities data."""
     try:
         sf = sf_client.get_client()
         
@@ -281,6 +280,11 @@ def get_todays_opportunities() -> Dict[str, Any]:
             "error": str(e),
             "opportunities": []
         }
+
+@mcp.tool()
+def get_todays_opportunities() -> Dict[str, Any]:
+    """Get all opportunities created today with their name, stage, and owner information."""
+    return _fetch_todays_opportunities()
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
