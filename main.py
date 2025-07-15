@@ -258,7 +258,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 formatted_response = formatted_response.replace('###', '')
                 
                 # Log the access for security
-                security_logger.log_opportunity_access(user_name, len(opportunities), f'Slack command: {text}')
+                security_logger.log_opportunity_access(user_name, len(all_opportunities), f'Slack command: {text}')
                 
                 return formatted_response
                 
