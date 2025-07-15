@@ -89,8 +89,8 @@ async def slack_command(request: Request):
     import time
     
     try:
-        # Get request data
-        form_data = await request.form()
+        # Get raw body first for signature verification
+        body = await request.body()
         
         # Verify Slack signature (optional but recommended)
         slack_signing_secret = os.getenv('SLACK_SIGNING_SECRET')
@@ -103,7 +103,6 @@ async def slack_command(request: Request):
                 return JSONResponse({"text": "Request too old"}, status_code=400)
             
             # Verify signature
-            body = await request.body()
             sig_basestring = f'v0:{timestamp}:{body.decode()}'
             computed_signature = 'v0=' + hmac.new(
                 slack_signing_secret.encode(),
@@ -114,11 +113,15 @@ async def slack_command(request: Request):
             if not hmac.compare_digest(computed_signature, slack_signature):
                 return JSONResponse({"text": "Invalid signature"}, status_code=401)
         
-        # Parse Slack command
-        command = form_data.get('command', '')
-        text = form_data.get('text', '')
-        user_name = form_data.get('user_name', 'unknown')
-        channel_name = form_data.get('channel_name', 'unknown')
+        # Parse form data from raw body
+        from urllib.parse import parse_qs
+        form_data = parse_qs(body.decode())
+        
+        # Parse Slack command (parse_qs returns lists)
+        command = form_data.get('command', [''])[0]
+        text = form_data.get('text', [''])[0]
+        user_name = form_data.get('user_name', ['unknown'])[0]
+        channel_name = form_data.get('channel_name', ['unknown'])[0]
         
         logger.info(f"Slack command: {command} {text} from {user_name} in #{channel_name}")
         
