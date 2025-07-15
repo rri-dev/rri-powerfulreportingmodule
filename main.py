@@ -326,7 +326,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             
             Create a professional table showing:
             1. Total number of events in the next 3 months
-            2. A table with columns: Event Name, Start Date, End Date, Type, Location
+            2. A table with columns: Event Name, Start Date, End Date, Location
             3. If there are more than 10 events, mention "(showing first 10 of [TOTAL])"
             
             Use emojis and Slack formatting for readability. KEEP IT COMPACT for mobile viewing.
@@ -334,10 +334,10 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             FORMATTING RULES FOR SLACK:
             - Use *text* for emphasis (single asterisks only)
             - NEVER use **double asterisks**
-            - Use compact table format: Event | Date | Type | Location
-            - Truncate long names to max 25 characters
+            - Use compact table format: Event | Date | Location
+            - Show full event names (do not truncate)
             - Use short date format (MM/DD)
-            - Keep each line under 80 characters
+            - Keep each line readable for mobile viewing
             """
             
             try:
@@ -527,16 +527,12 @@ def format_events_simple(events: list, summary_stats: dict, user_name: str) -> s
     for event in events[:10]:  # Limit to first 10 for compact display
         name = event.get('name', 'Unknown Event')
         start_date = event.get('start_date', 'TBD')
-        event_type = event.get('type', 'Unknown')
         location = event.get('location', 'TBD')
         
-        # Truncate long names and locations for compact display
-        if len(name) > 25:
-            name = name[:22] + "..."
+        # Truncate long locations for compact display (keep full event names)
+        # Event names are shown in full as requested
         if len(location) > 20:
             location = location[:17] + "..."
-        if len(event_type) > 15:
-            event_type = event_type[:12] + "..."
         
         # Format date if it's provided (short format)
         if start_date and start_date != 'TBD':
@@ -548,7 +544,7 @@ def format_events_simple(events: list, summary_stats: dict, user_name: str) -> s
             except:
                 pass  # Keep original format if parsing fails
         
-        response += f"📅 *{name}* | {start_date} | {event_type} | {location}\n"
+        response += f"📅 *{name}* | {start_date} | {location}\n"
     
     if total_count > 10:
         response += f"\n... and {total_count - 10} more events"
@@ -705,7 +701,7 @@ def _fetch_upcoming_events() -> Dict[str, Any]:
         
         # Query upcoming events in next 3 months
         events_soql = """
-        SELECT Name, Start_Date__c, End_Date__c, Type__c, Location__c
+        SELECT Name, Start_Date__c, End_Date__c, Location__c
         FROM Event__c 
         WHERE Start_Date__c >= TODAY AND Start_Date__c <= NEXT_N_MONTHS:3
         ORDER BY Start_Date__c ASC
@@ -720,7 +716,6 @@ def _fetch_upcoming_events() -> Dict[str, Any]:
                 "name": record.get('Name', ''),
                 "start_date": record.get('Start_Date__c', ''),
                 "end_date": record.get('End_Date__c', ''),
-                "type": record.get('Type__c', ''),
                 "location": record.get('Location__c', '')
             })
         
