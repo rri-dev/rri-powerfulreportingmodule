@@ -813,7 +813,8 @@ def _fetch_event_credits_by_name(event_name: str) -> Dict[str, Any]:
         """
         
         logger.info(f"Executing safe SOQL query for credits: Related_Event__c = '{sanitized_event_id}'")
-        credits_result = sf.query(credits_soql)
+        credits_result = sf.query_all(credits_soql)
+        logger.info(f"Retrieved {len(credits_result['records'])} total credit records (using query_all for complete results)")
         
         # Format credits data
         credits = []
