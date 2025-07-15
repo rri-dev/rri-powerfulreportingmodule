@@ -226,6 +226,11 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             Create a professional, easy-to-read summary. Use emojis and formatting appropriate for Slack.
             Include key metrics like total count, stages, and highlight any large deals.
             For each opportunity, provide a 2-sentence summary mentioning the products/services listed.
+            
+            Use Slack markdown formatting:
+            - *text* for italic (not **text**)
+            - Use line breaks and bullet points for readability
+            - Do not use **bold** formatting as it doesn't work in Slack
             """
             
             try:
@@ -274,18 +279,18 @@ def format_opportunities_simple(opportunities: list, user_name: str) -> str:
         stage = opp.get('stage', 'Unknown')
         stages[stage] = stages.get(stage, 0) + 1
     
-    response = f"📊 **Today's Opportunities Report** (requested by {user_name})\n\n"
-    response += f"**Total:** {total_count} opportunities"
+    response = f"📊 *Today's Opportunities Report* (requested by {user_name})\n\n"
+    response += f"*Total:* {total_count} opportunities"
     
     if total_amount > 0:
-        response += f" | **Pipeline Value:** ${total_amount:,.0f}"
+        response += f" | *Pipeline Value:* ${total_amount:,.0f}"
     
-    response += "\n\n**By Stage:**\n"
+    response += "\n\n*By Stage:*\n"
     for stage, count in stages.items():
         response += f"• {stage}: {count}\n"
     
     if len(opportunities) <= 5:
-        response += "\n**Details:**\n"
+        response += "\n*Details:*\n"
         for opp in opportunities:
             amount_str = f" (${opp.get('amount', 0):,.0f})" if opp.get('amount') else ""
             response += f"• {opp.get('name', 'Unknown')} - {opp.get('stage', 'Unknown')} - {opp.get('owner', 'Unknown')}{amount_str}\n"
