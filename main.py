@@ -188,7 +188,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             summary_stats = opportunities_data.get('summary_stats', {})
             
             if not all_opportunities:
-                return "📊 No opportunities were created today."
+                return "📊 No Closed Won opportunities were created today."
             
             # Summarize data for GPT to avoid token limits
             summary_data = {
@@ -226,11 +226,10 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             Request: {text}
             
             Create a professional summary showing:
-            1. Overall activity summary (total opportunities, stages breakdown, pipeline value)  
-            2. Revenue won today from closed deals
-            3. Detailed summaries of the top 3 closed won deals with products/services
+            1. Total closed won deals and revenue for today
+            2. Detailed summaries of the top 3 closed won deals with products/services
             
-            Use emojis and Slack formatting. Focus on celebrating wins while showing complete picture.
+            Use emojis and Slack formatting. Focus on celebrating today's wins.
             
             IMPORTANT FORMATTING RULES FOR SLACK:
             - Use *text* for emphasis (single asterisks only)
@@ -278,28 +277,19 @@ async def handle_prm_command(text: str, user_name: str) -> str:
 def format_opportunities_simple(all_opportunities: list, top_closed_won: list, summary_stats: dict, user_name: str) -> str:
     """Simple fallback formatting for opportunities"""
     if not all_opportunities:
-        return "📊 No opportunities found."
+        return "📊 No Closed Won opportunities found today."
     
     total_count = summary_stats.get('total_count', 0)
-    total_pipeline_value = summary_stats.get('total_pipeline_value', 0)
     total_closed_won_revenue = summary_stats.get('total_closed_won_revenue', 0)
-    stages_breakdown = summary_stats.get('stages_breakdown', {})
     
-    response = f"📊 *Today's Sales Activity Summary* (requested by {user_name})\n\n"
-    response += f"*Total Opportunities:* {total_count}"
-    
-    if total_pipeline_value > 0:
-        response += f" | *Pipeline Value:* ${total_pipeline_value:,.0f}"
+    response = f"🎉 *Today's Closed Won Deals* (requested by {user_name})\n\n"
+    response += f"*Total Deals Won:* {total_count}"
     
     if total_closed_won_revenue > 0:
         response += f" | *Revenue Won:* ${total_closed_won_revenue:,.0f}"
     
-    response += "\n\n*By Stage:*\n"
-    for stage, count in stages_breakdown.items():
-        response += f"• {stage}: {count}\n"
-    
     if top_closed_won:
-        response += f"\n🎉 *Top {len(top_closed_won)} Deals Closed Today:*\n"
+        response += f"\n\n*Top {len(top_closed_won)} Deals:*\n"
         for opp in top_closed_won:
             amount_str = f"${opp.get('amount', 0):,.0f}" if opp.get('amount') else "Amount TBD"
             response += f"🏆 *{opp.get('name', 'Unknown')}* - {amount_str} - {opp.get('owner', 'Unknown')}\n"
@@ -401,7 +391,7 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
                 "total_closed_won_revenue": total_closed_won_revenue,
                 "closed_won_count": len(top_closed_won)
             },
-            "summary": f"Found {len(all_opportunities)} opportunities created today, {len(top_closed_won)} closed won"
+            "summary": f"Found {len(all_opportunities)} Closed Won deals today"
         }
         
     except Exception as e:
