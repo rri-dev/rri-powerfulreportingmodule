@@ -1,0 +1,5 @@
+fastmcp
+simple-salesforce
+python-dotenv
+gunicorn>=21.0.0
+uvicorn[standard]>=0.24.0

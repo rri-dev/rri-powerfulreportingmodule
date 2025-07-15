@@ -1,0 +1,90 @@
+{
+  "name": "Today's Opportunities MCP Server",
+  "description": "A focused Model Context Protocol server that provides access to opportunities created today in your Salesforce instance.",
+  "repository": "https://github.com/your-username/salesforce-mcp-server",
+  "logo": "https://avatars.githubusercontent.com/u/204230?s=200&v=4",
+  "keywords": [
+    "salesforce",
+    "mcp",
+    "model-context-protocol",
+    "opportunities",
+    "sales",
+    "crm"
+  ],
+  "success_url": "/health",
+  "env": {
+    "SF_USERNAME": {
+      "description": "Your Salesforce username",
+      "required": true
+    },
+    "SF_PASSWORD": {
+      "description": "Your Salesforce password",
+      "required": true
+    },
+    "SF_SECURITY_TOKEN": {
+      "description": "Your Salesforce security token",
+      "required": true
+    },
+    "SF_INSTANCE_URL": {
+      "description": "Your Salesforce instance URL (e.g., https://your-domain.salesforce.com)",
+      "required": false
+    },
+    "SF_API_VERSION": {
+      "description": "Salesforce API version to use",
+      "value": "58.0",
+      "required": false
+    },
+    "MCP_API_KEY": {
+      "description": "Secure API key for MCP authentication (generate a random 32+ character string)",
+      "required": true
+    },
+    "REQUIRE_AUTH": {
+      "description": "Require API key authentication",
+      "value": "true",
+      "required": false
+    },
+    "RATE_LIMIT_REQUESTS": {
+      "description": "Maximum requests per hour per IP",
+      "value": "50",
+      "required": false
+    },
+    "RATE_LIMIT_WINDOW": {
+      "description": "Rate limit window in seconds",
+      "value": "3600",
+      "required": false
+    },
+    "LOG_LEVEL": {
+      "description": "Logging level",
+      "value": "info",
+      "required": false
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "addons": [
+    {
+      "plan": "heroku-managed-inference-and-agents:starter",
+      "as": "MANAGED_INFERENCE"
+    }
+  ],
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "environments": {
+    "test": {},
+    "review": {
+      "addons": [
+        {
+          "plan": "heroku-managed-inference-and-agents:starter",
+          "as": "MANAGED_INFERENCE"
+        }
+      ]
+    }
+  }
+}
