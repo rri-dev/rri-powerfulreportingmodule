@@ -198,7 +198,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             summary_stats = opportunities_data.get('summary_stats', {})
             
             if not all_opportunities:
-                return "📊 No Closed Won opportunities were created today."
+                return "📊 No opportunities were closed today."
             
             # Summarize data for GPT to avoid token limits - DO NOT send all 304+ records
             summary_data = {
@@ -479,7 +479,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
         
         else:
             # Handle other PRM commands
-            return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities created today\n• `/prm events` - Get upcoming events (next 3 months)\n• `/prm credits [event name]` - Get event tickets/credits"
+            return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities closed today\n• `/prm events` - Get upcoming events (next 3 months)\n• `/prm credits [event name]` - Get event tickets/credits"
             
     except Exception as e:
         logger.error(f"PRM command error: {e}")
@@ -488,12 +488,12 @@ async def handle_prm_command(text: str, user_name: str) -> str:
 def format_opportunities_simple(all_opportunities: list, top_closed_won: list, summary_stats: dict, user_name: str) -> str:
     """Simple fallback formatting for opportunities"""
     if not all_opportunities:
-        return "📊 No Closed Won opportunities found today."
+        return "📊 No opportunities were closed today."
     
     total_count = summary_stats.get('total_count', 0)
     total_closed_won_revenue = summary_stats.get('total_closed_won_revenue', 0)
     
-    response = f"🎉 *Today's Closed Won Deals* (requested by {user_name})\n\n"
+    response = f"🎉 *Today's Closed Deals* (requested by {user_name})\n\n"
     response += f"*Total Deals Won:* {total_count}"
     
     if total_closed_won_revenue > 0:
@@ -591,16 +591,16 @@ def format_event_credits_simple(credits: list, summary_stats: dict, event_info: 
     return response
 
 def _fetch_todays_opportunities() -> Dict[str, Any]:
-    """Internal function to fetch opportunities data."""
+    """Internal function to fetch opportunities closed today."""
     try:
         sf = sf_client.get_client()
         
-        # Query 1: Get ALL opportunities created today for summary
+        # Query 1: Get ALL opportunities closed today for summary
         all_opportunities_soql = """
         SELECT Id, Name, StageName, Owner.Name, CreatedDate, Amount, CloseDate
         FROM Opportunity 
-        WHERE CreatedDate = TODAY AND StageName = 'Closed Won'
-        ORDER BY CreatedDate DESC
+        WHERE CloseDate = TODAY AND StageName = 'Closed Won'
+        ORDER BY CloseDate DESC
         """
         
         all_result = sf.query(all_opportunities_soql)
@@ -612,7 +612,7 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
                 FROM OpportunityLineItems 
                 ORDER BY TotalPrice DESC)
         FROM Opportunity 
-        WHERE CreatedDate = TODAY AND StageName = 'Closed Won'
+        WHERE CloseDate = TODAY AND StageName = 'Closed Won'
         ORDER BY Amount DESC NULLS LAST
         LIMIT 3
         """
@@ -685,7 +685,7 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
                 "total_closed_won_revenue": total_closed_won_revenue,
                 "closed_won_count": len(top_closed_won)
             },
-            "summary": f"Found {len(all_opportunities)} Closed Won deals today"
+            "summary": f"Found {len(all_opportunities)} deals closed today"
         }
         
     except Exception as e:
@@ -883,7 +883,7 @@ def _fetch_event_credits_by_name(event_name: str) -> Dict[str, Any]:
 
 @mcp.tool()
 def get_todays_opportunities() -> Dict[str, Any]:
-    """Get all opportunities created today with their name, stage, and owner information."""
+    """Get all opportunities closed today with their name, stage, and owner information."""
     return _fetch_todays_opportunities()
 
 @mcp.tool()
