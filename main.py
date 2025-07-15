@@ -130,12 +130,20 @@ async def slack_command(request: Request):
             # Respond immediately to avoid timeout
             response_url = form_data.get('response_url', [''])[0]
             
+            # Dynamic loading message based on command type
+            if "event" in text.lower():
+                loading_message = "🔄 Fetching upcoming events... please wait"
+            elif "today" in text.lower() and "opportunit" in text.lower():
+                loading_message = "🔄 Fetching today's opportunities... please wait"
+            else:
+                loading_message = "🔄 Processing your request... please wait"
+            
             # Start background processing
             asyncio.create_task(process_prm_command_async(text, user_name, response_url))
             
             return JSONResponse({
                 "response_type": "in_channel",
-                "text": "🔄 Fetching today's opportunities... please wait"
+                "text": loading_message
             })
         else:
             return JSONResponse({
@@ -294,15 +302,15 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             summary_stats = events_data.get('summary_stats', {})
             
             if not events:
-                return "📅 No upcoming events found in the next 6 months."
+                return "📅 No upcoming events found in the next 3 months."
             
             # Prepare data for GPT formatting
             events_summary = {
                 "summary": {
                     "total_events": summary_stats.get('total_count', 0),
-                    "date_range": summary_stats.get('date_range', 'next 6 months')
+                    "date_range": summary_stats.get('date_range', 'next 3 months')
                 },
-                "events": events[:20]  # Limit to first 20 events to avoid token overflow
+                "events": events[:10]  # Limit to first 10 events for compact Slack display
             }
             
             # Use GPT to format the events as a table
@@ -315,17 +323,19 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             Request: {text}
             
             Create a professional table showing:
-            1. Total number of events in the next 6 months
+            1. Total number of events in the next 3 months
             2. A table with columns: Event Name, Start Date, End Date, Type, Location
-            3. If there are more than 20 events, mention "(showing first 20 of [TOTAL])"
+            3. If there are more than 10 events, mention "(showing first 10 of [TOTAL])"
             
-            Use emojis and Slack formatting for readability.
+            Use emojis and Slack formatting for readability. KEEP IT COMPACT for mobile viewing.
             
             FORMATTING RULES FOR SLACK:
             - Use *text* for emphasis (single asterisks only)
             - NEVER use **double asterisks**
-            - Use simple formatting for tables
-            - Keep it clean and readable
+            - Use compact table format: Event | Date | Type | Location
+            - Truncate long names to max 25 characters
+            - Use short date format (MM/DD)
+            - Keep each line under 80 characters
             """
             
             try:
@@ -358,7 +368,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
         
         else:
             # Handle other PRM commands
-            return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities created today\n• `/prm events` - Get upcoming events (next 6 months)"
+            return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities created today\n• `/prm events` - Get upcoming events (next 3 months)"
             
     except Exception as e:
         logger.error(f"PRM command error: {e}")
@@ -393,36 +403,44 @@ def format_opportunities_simple(all_opportunities: list, top_closed_won: list, s
 def format_events_simple(events: list, summary_stats: dict, user_name: str) -> str:
     """Simple fallback formatting for events"""
     if not events:
-        return "📅 No upcoming events found in the next 6 months."
+        return "📅 No upcoming events found in the next 3 months."
     
     total_count = summary_stats.get('total_count', 0)
-    date_range = summary_stats.get('date_range', 'next 6 months')
+    date_range = summary_stats.get('date_range', 'next 3 months')
     
     response = f"📅 *Upcoming Events* (requested by {user_name})\n\n"
     response += f"*Total Events:* {total_count} in the {date_range}\n\n"
     
-    # Show events in a simple table format
+    # Show events in a compact table format
     response += "*Event Schedule:*\n"
-    for event in events[:15]:  # Limit to first 15 for readability
+    for event in events[:10]:  # Limit to first 10 for compact display
         name = event.get('name', 'Unknown Event')
         start_date = event.get('start_date', 'TBD')
         event_type = event.get('type', 'Unknown')
         location = event.get('location', 'TBD')
         
-        # Format date if it's provided
+        # Truncate long names and locations for compact display
+        if len(name) > 25:
+            name = name[:22] + "..."
+        if len(location) > 20:
+            location = location[:17] + "..."
+        if len(event_type) > 15:
+            event_type = event_type[:12] + "..."
+        
+        # Format date if it's provided (short format)
         if start_date and start_date != 'TBD':
             try:
                 from datetime import datetime
                 # Assume the date is in ISO format from Salesforce
                 date_obj = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-                start_date = date_obj.strftime('%m/%d/%Y')
+                start_date = date_obj.strftime('%m/%d')
             except:
                 pass  # Keep original format if parsing fails
         
         response += f"📅 *{name}* | {start_date} | {event_type} | {location}\n"
     
-    if total_count > 15:
-        response += f"\n... and {total_count - 15} more events"
+    if total_count > 10:
+        response += f"\n... and {total_count - 10} more events"
     
     return response
 
@@ -539,11 +557,11 @@ def _fetch_upcoming_events() -> Dict[str, Any]:
     try:
         sf = sf_client.get_client()
         
-        # Query upcoming events in next 6 months
+        # Query upcoming events in next 3 months
         events_soql = """
         SELECT Name, Start_Date__c, End_Date__c, Type__c, Location__c
         FROM Event__c 
-        WHERE Start_Date__c >= TODAY AND Start_Date__c <= NEXT_N_MONTHS:6
+        WHERE Start_Date__c >= TODAY AND Start_Date__c <= NEXT_N_MONTHS:3
         ORDER BY Start_Date__c ASC
         """
         
@@ -563,7 +581,7 @@ def _fetch_upcoming_events() -> Dict[str, Any]:
         # Calculate summary statistics
         summary_stats = {
             "total_count": len(events),
-            "date_range": "next 6 months"
+            "date_range": "next 3 months"
         }
         
         # Log event access for security monitoring
@@ -573,7 +591,7 @@ def _fetch_upcoming_events() -> Dict[str, Any]:
             "success": True,
             "events": events,
             "summary_stats": summary_stats,
-            "summary": f"Found {len(events)} upcoming events in the next 6 months"
+            "summary": f"Found {len(events)} upcoming events in the next 3 months"
         }
         
     except Exception as e:
