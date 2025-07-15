@@ -186,7 +186,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             opportunities = opportunities_data.get('opportunities', [])
             
             if not opportunities:
-                return "📊 No opportunities were created today."
+                return "📊 No Closed Won opportunities were created today."
             
             # Summarize data for GPT to avoid token limits
             summary_data = {
@@ -216,16 +216,16 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             
             # Use GPT to format the response
             gpt_prompt = f"""
-            Format the following opportunities data for a Slack message. Be concise but informative.
+            Format the following CLOSED WON opportunities data for a Slack message. Be concise but informative.
             
             Data: {json.dumps(summary_data, indent=2)}
             
             User: {user_name}
             Request: {text}
             
-            Create a professional, easy-to-read summary. Use emojis and formatting appropriate for Slack.
-            Include key metrics like total count, stages, and highlight any large deals.
-            For each opportunity, provide a 2-sentence summary mentioning the products/services listed.
+            Create a professional, easy-to-read summary of today's top 3 Closed Won deals. Use emojis and formatting appropriate for Slack.
+            Include total revenue won today and highlight the largest deals.
+            For each opportunity, provide a 2-sentence summary mentioning the products/services and deal value.
             
             IMPORTANT FORMATTING RULES FOR SLACK:
             - Use *text* for emphasis (single asterisks only)
@@ -284,21 +284,16 @@ def format_opportunities_simple(opportunities: list, user_name: str) -> str:
         stage = opp.get('stage', 'Unknown')
         stages[stage] = stages.get(stage, 0) + 1
     
-    response = f"📊 *Today's Opportunities Report* (requested by {user_name})\n\n"
-    response += f"*Total:* {total_count} opportunities"
+    response = f"🎉 *Today's Closed Won Deals* (requested by {user_name})\n\n"
+    response += f"*Total Deals Won:* {total_count}"
     
     if total_amount > 0:
-        response += f" | *Pipeline Value:* ${total_amount:,.0f}"
+        response += f" | *Total Revenue:* ${total_amount:,.0f}"
     
-    response += "\n\n*By Stage:*\n"
-    for stage, count in stages.items():
-        response += f"• {stage}: {count}\n"
-    
-    if len(opportunities) <= 5:
-        response += "\n*Details:*\n"
-        for opp in opportunities:
-            amount_str = f" (${opp.get('amount', 0):,.0f})" if opp.get('amount') else ""
-            response += f"• {opp.get('name', 'Unknown')} - {opp.get('stage', 'Unknown')} - {opp.get('owner', 'Unknown')}{amount_str}\n"
+    response += "\n\n*Top Deals Won Today:*\n"
+    for opp in opportunities:
+        amount_str = f"${opp.get('amount', 0):,.0f}" if opp.get('amount') else "Amount TBD"
+        response += f"🏆 *{opp.get('name', 'Unknown')}* - {amount_str} - {opp.get('owner', 'Unknown')}\n"
     
     return response
 
@@ -307,15 +302,16 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
     try:
         sf = sf_client.get_client()
         
-        # SOQL query to get opportunities created today with products
+        # SOQL query to get closed won opportunities created today with products
         soql = """
         SELECT Id, Name, StageName, Owner.Name, CreatedDate, Amount, CloseDate,
                (SELECT Id, Product2.Name, Product2.Description, Quantity, UnitPrice, TotalPrice 
                 FROM OpportunityLineItems 
                 ORDER BY TotalPrice DESC)
         FROM Opportunity 
-        WHERE CreatedDate = TODAY
-        ORDER BY CreatedDate DESC
+        WHERE CreatedDate = TODAY AND StageName = 'Closed Won'
+        ORDER BY Amount DESC NULLS LAST
+        LIMIT 3
         """
         
         result = sf.query(soql)
@@ -353,7 +349,7 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
             "success": True,
             "total_count": result['totalSize'],
             "opportunities": opportunities,
-            "summary": f"Found {len(opportunities)} opportunities created today"
+            "summary": f"Found {len(opportunities)} Closed Won opportunities created today"
         }
         
     except Exception as e:
