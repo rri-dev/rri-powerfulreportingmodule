@@ -526,6 +526,11 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             
             report_data = _fetch_salesforce_report_by_name(report_name)
             
+            # Ensure report_data is a dictionary
+            if not isinstance(report_data, dict):
+                logger.error(f"Report data is not a dictionary: {type(report_data)}")
+                return "❌ Error: Invalid response format from report fetch"
+            
             if not report_data.get('success'):
                 error_msg = report_data.get('error', 'Unknown error')
                 if 'No reports found matching' in error_msg:
@@ -652,7 +657,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 return formatted_response
                 
             except Exception as gpt_error:
-                logger.error(f"GPT error for report: {gpt_error}")
+                logger.error(f"GPT error for report: {gpt_error}", exc_info=True)
                 # Fallback to simple formatting
                 return format_report_simple(report_info, summary_stats, user_name, actual_report_data, data_format)
         
@@ -661,7 +666,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities closed today\n• `/prm yesterday's opportunities` - Get opportunities closed yesterday\n• `/prm events` - Get upcoming events (next 3 months)\n• `/prm credits [event name]` - Get event tickets/credits\n• `/prm report [report name]` - Get Salesforce report data"
             
     except Exception as e:
-        logger.error(f"PRM command error: {e}")
+        logger.error(f"PRM command error: {e}", exc_info=True)
         return f"❌ Error processing request: {str(e)}"
 
 def format_opportunities_simple(all_opportunities: list, top_closed_won: list, summary_stats: dict, user_name: str) -> str:

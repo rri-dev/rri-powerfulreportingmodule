@@ -153,6 +153,10 @@ class SalesforceClient:
             
             response = self.sf._call_salesforce('GET', url)
             
+            # Check if response is already parsed JSON (some versions of simple_salesforce do this)
+            if isinstance(response, dict):
+                return response
+            
             if response.status_code != 200:
                 raise Exception(f"Failed to fetch report data: {response.status_code} - {response.text}")
             
@@ -176,6 +180,10 @@ class SalesforceClient:
         try:
             url = f"{self.sf.base_url}analytics/reports/{report_id}/describe"
             response = self.sf._call_salesforce('GET', url)
+            
+            # Check if response is already parsed JSON
+            if isinstance(response, dict):
+                return response
             
             if response.status_code != 200:
                 raise Exception(f"Failed to describe report: {response.status_code} - {response.text}")
