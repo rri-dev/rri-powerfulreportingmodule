@@ -34,31 +34,35 @@ class AuthConfig:
         return secrets.compare_digest(self.api_key, provided_key)
 
 class RateLimiter:
-    """Simple rate limiting based on IP address."""
+    """Simple rate limiting based on IP address or user identifier."""
     
     def __init__(self, max_requests: int = 100, window_seconds: int = 3600):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.requests: Dict[str, list] = defaultdict(list)
     
-    def is_allowed(self, client_ip: str) -> Tuple[bool, int]:
-        """Check if request is allowed and return remaining requests."""
+    def is_allowed(self, identifier: str) -> Tuple[bool, int]:
+        """Check if request is allowed and return remaining requests.
+        
+        Args:
+            identifier: Can be an IP address or user identifier (e.g., slack:username)
+        """
         now = time.time()
         window_start = now - self.window_seconds
         
         # Clean old requests
-        self.requests[client_ip] = [
-            req_time for req_time in self.requests[client_ip] 
+        self.requests[identifier] = [
+            req_time for req_time in self.requests[identifier] 
             if req_time > window_start
         ]
         
-        current_requests = len(self.requests[client_ip])
+        current_requests = len(self.requests[identifier])
         
         if current_requests >= self.max_requests:
             return False, 0
         
         # Add current request
-        self.requests[client_ip].append(now)
+        self.requests[identifier].append(now)
         remaining = self.max_requests - (current_requests + 1)
         
         return True, remaining
@@ -83,9 +87,9 @@ class SecurityLogger:
         """Log authentication failure."""
         self.logger.warning(f"AUTH_FAILURE - IP: {client_ip} - Reason: {reason} - UA: {user_agent}")
     
-    def log_rate_limit(self, client_ip: str, user_agent: str = None):
+    def log_rate_limit(self, identifier: str, user_agent: str = None):
         """Log rate limit violation."""
-        self.logger.warning(f"RATE_LIMIT - IP: {client_ip} - UA: {user_agent}")
+        self.logger.warning(f"RATE_LIMIT - ID: {identifier} - UA: {user_agent}")
     
     def log_opportunity_access(self, client_ip: str, count: int, user_agent: str = None):
         """Log opportunity data access."""

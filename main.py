@@ -125,6 +125,15 @@ async def slack_command(request: Request):
         
         logger.info(f"Slack command: {command} {text} from {user_name} in #{channel_name}")
         
+        # Check rate limiting for Slack user
+        slack_user_id = f"slack:{user_name}"
+        allowed, remaining = rate_limiter.is_allowed(slack_user_id)
+        if not allowed:
+            security_logger.log_rate_limit(slack_user_id, f"Slack command: {command}")
+            return JSONResponse({
+                "text": f"⚠️ Rate limit exceeded. You can only make {rate_limiter.max_requests} request(s) per {rate_limiter.window_seconds // 60} minutes. Please try again later."
+            })
+        
         # Handle /prm command
         if command == '/prm':
             # Respond immediately to avoid timeout
