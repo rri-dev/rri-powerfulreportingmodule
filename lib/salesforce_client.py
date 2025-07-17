@@ -109,6 +109,10 @@ class SalesforceClient:
         # Escape single quotes in the report name for SOQL
         escaped_name = report_name.replace("'", "\\'")
         
+        # Convert user-friendly wildcards (*) to SOQL wildcards (%)
+        # This allows users to search with patterns like *BMH* or BMH*
+        escaped_name = escaped_name.replace('*', '%')
+        
         try:
             soql = f"""
             SELECT Id, Name, DeveloperName, Description, FolderName
@@ -142,13 +146,20 @@ class SalesforceClient:
         try:
             if export_format == 'csv':
                 # Direct CSV export for large reports (bypasses 2000 row limit)
+                # Using a different approach to get actual CSV data
                 url = f"{self.sf.base_url}analytics/reports/{report_id}?export=1&enc=UTF-8&xf=csv"
-                response = self.sf._call_salesforce('GET', url)
+                
+                # Use the session directly to get raw CSV response
+                headers = self.sf.headers.copy()
+                headers['Accept'] = 'text/csv'
+                
+                response = self.sf.session.get(url, headers=headers)
                 
                 if response.status_code != 200:
                     raise SalesforceError(f"Failed to export report: {response.text}")
                 
-                return response.text
+                # Return the CSV content directly
+                return response.content.decode('utf-8')
                 
             else:
                 # JSON format with optional details
