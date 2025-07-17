@@ -146,6 +146,8 @@ async def slack_command(request: Request):
                 loading_message = "🔄 Fetching upcoming events... please wait"
             elif "today" in text.lower() and "opportunit" in text.lower():
                 loading_message = "🔄 Fetching today's opportunities... please wait"
+            elif "yesterday" in text.lower() and "opportunit" in text.lower():
+                loading_message = "🔄 Fetching yesterday's opportunities... please wait"
             else:
                 loading_message = "🔄 Processing your request... please wait"
             
@@ -196,8 +198,16 @@ async def handle_prm_command(text: str, user_name: str) -> str:
     """Handle PRM command with GPT integration"""
     try:
         # Get opportunities data
-        if "today" in text.lower() and "opportunit" in text.lower():
-            opportunities_data = _fetch_todays_opportunities()
+        if ("today" in text.lower() and "opportunit" in text.lower()) or ("yesterday" in text.lower() and "opportunit" in text.lower()):
+            # Determine which day to fetch
+            if "yesterday" in text.lower():
+                opportunities_data = _fetch_yesterdays_opportunities()
+                date_label = "yesterday"
+                no_data_message = "📊 No opportunities were closed yesterday."
+            else:
+                opportunities_data = _fetch_todays_opportunities()
+                date_label = "today"
+                no_data_message = "📊 No opportunities were closed today."
             
             if not opportunities_data.get('success'):
                 return f"❌ Error fetching opportunities: {opportunities_data.get('error', 'Unknown error')}"
@@ -207,14 +217,15 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             summary_stats = opportunities_data.get('summary_stats', {})
             
             if not all_opportunities:
-                return "📊 No opportunities were closed today."
+                return no_data_message
             
             # Summarize data for GPT to avoid token limits - DO NOT send all 304+ records
             summary_data = {
                 "daily_summary": {
-                    "total_deals_closed_today": summary_stats.get('total_count', 0),
-                    "total_revenue_won_today": summary_stats.get('total_closed_won_revenue', 0),
-                    "showing_top_deals": min(len(top_closed_won), 3)
+                    f"total_deals_closed_{date_label}": summary_stats.get('total_count', 0),
+                    f"total_revenue_won_{date_label}": summary_stats.get('total_closed_won_revenue', 0),
+                    "showing_top_deals": min(len(top_closed_won), 3),
+                    "date_label": date_label
                 },
                 "top_deals_details": []
             }
@@ -251,11 +262,11 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             User: {user_name}
             Request: {text}
             
-            IMPORTANT: You must show the EXACT total count from daily_summary.total_deals_closed_today
+            IMPORTANT: You must show the EXACT total count from the daily_summary object
             
             Create a professional summary showing:
-            1. TOTAL closed won deals for today (use exact number from daily_summary.total_deals_closed_today)
-            2. TOTAL revenue won today (use exact number from daily_summary.total_revenue_won_today)  
+            1. TOTAL closed won deals for {date_label} (use exact number from daily_summary)
+            2. TOTAL revenue won {date_label} (use exact number from daily_summary)  
             3. Detailed summaries of top 3 deals with products (from top_deals_details)
             4. If total > 3, say "(showing top 3 of [TOTAL] deals)"
             
@@ -488,7 +499,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
         
         else:
             # Handle other PRM commands
-            return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities closed today\n• `/prm events` - Get upcoming events (next 3 months)\n• `/prm credits [event name]` - Get event tickets/credits"
+            return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities closed today\n• `/prm yesterday's opportunities` - Get opportunities closed yesterday\n• `/prm events` - Get upcoming events (next 3 months)\n• `/prm credits [event name]` - Get event tickets/credits"
             
     except Exception as e:
         logger.error(f"PRM command error: {e}")
@@ -595,29 +606,29 @@ def format_event_credits_simple(credits: list, summary_stats: dict, event_info: 
     
     return response
 
-def _fetch_todays_opportunities() -> Dict[str, Any]:
-    """Internal function to fetch opportunities closed today."""
+def _fetch_opportunities_by_date(date_filter: str = "TODAY", date_label: str = "today") -> Dict[str, Any]:
+    """Internal function to fetch opportunities closed on a specific date."""
     try:
         sf = sf_client.get_client()
         
-        # Query 1: Get ALL opportunities closed today for summary
-        all_opportunities_soql = """
+        # Query 1: Get ALL opportunities closed on the specified date for summary
+        all_opportunities_soql = f"""
         SELECT Id, Name, StageName, Owner.Name, CreatedDate, Amount, CloseDate
         FROM Opportunity 
-        WHERE CloseDate = TODAY AND StageName = 'Closed Won'
+        WHERE CloseDate = {date_filter} AND StageName = 'Closed Won'
         ORDER BY CloseDate DESC
         """
         
         all_result = sf.query(all_opportunities_soql)
         
         # Query 2: Get top 3 closed won opportunities with products
-        closed_won_soql = """
+        closed_won_soql = f"""
         SELECT Id, Name, StageName, Owner.Name, CreatedDate, Amount, CloseDate,
                (SELECT Id, Product2.Name, Product2.Description, Quantity, UnitPrice, TotalPrice 
                 FROM OpportunityLineItems 
                 ORDER BY TotalPrice DESC)
         FROM Opportunity 
-        WHERE CloseDate = TODAY AND StageName = 'Closed Won'
+        WHERE CloseDate = {date_filter} AND StageName = 'Closed Won'
         ORDER BY Amount DESC NULLS LAST
         LIMIT 3
         """
@@ -690,11 +701,11 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
                 "total_closed_won_revenue": total_closed_won_revenue,
                 "closed_won_count": len(top_closed_won)
             },
-            "summary": f"Found {len(all_opportunities)} deals closed today"
+            "summary": f"Found {len(all_opportunities)} deals closed {date_label}"
         }
         
     except Exception as e:
-        logger.error(f"Failed to get today's opportunities: {e}")
+        logger.error(f"Failed to get {date_label}'s opportunities: {e}")
         return {
             "success": False,
             "error": str(e),
@@ -702,6 +713,14 @@ def _fetch_todays_opportunities() -> Dict[str, Any]:
             "top_closed_won": [],
             "summary_stats": {}
         }
+
+def _fetch_todays_opportunities() -> Dict[str, Any]:
+    """Internal function to fetch opportunities closed today."""
+    return _fetch_opportunities_by_date("TODAY", "today")
+
+def _fetch_yesterdays_opportunities() -> Dict[str, Any]:
+    """Internal function to fetch opportunities closed yesterday."""
+    return _fetch_opportunities_by_date("YESTERDAY", "yesterday")
 
 def _fetch_upcoming_events() -> Dict[str, Any]:
     """Internal function to fetch upcoming events from Event__c table."""
@@ -890,6 +909,11 @@ def _fetch_event_credits_by_name(event_name: str) -> Dict[str, Any]:
 def get_todays_opportunities() -> Dict[str, Any]:
     """Get all opportunities closed today with their name, stage, and owner information."""
     return _fetch_todays_opportunities()
+
+@mcp.tool()
+def get_yesterdays_opportunities() -> Dict[str, Any]:
+    """Get all opportunities closed yesterday with their name, stage, and owner information."""
+    return _fetch_yesterdays_opportunities()
 
 @mcp.tool()
 def get_upcoming_events() -> Dict[str, Any]:
