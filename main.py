@@ -556,7 +556,14 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 
                 # Get column information
                 columns = report_metadata.get('detailColumns', [])
-                column_names = [col.get('label', col.get('name', '')) for col in columns]
+                column_names = []
+                for col in columns:
+                    if isinstance(col, dict):
+                        column_names.append(col.get('label', col.get('name', '')))
+                    elif isinstance(col, str):
+                        column_names.append(col)
+                    else:
+                        column_names.append(str(col))
                 
                 # Extract data rows based on report type
                 rows = []
@@ -810,7 +817,14 @@ def format_report_simple(report_info: dict, summary_stats: dict, user_name: str,
         columns = report_metadata.get('detailColumns', [])
         if columns:
             response += f"• Columns: {len(columns)}\n"
-            col_names = [col.get('label', col.get('name', '')) for col in columns[:3]]
+            col_names = []
+            for col in columns[:3]:
+                if isinstance(col, dict):
+                    col_names.append(col.get('label', col.get('name', '')))
+                elif isinstance(col, str):
+                    col_names.append(col)
+                else:
+                    col_names.append(str(col))
             if col_names:
                 response += f"• Key Fields: {', '.join(col_names)}"
                 if len(columns) > 3:
