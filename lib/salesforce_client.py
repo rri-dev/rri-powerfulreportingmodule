@@ -94,3 +94,99 @@ class SalesforceClient:
                     raise
         
         raise Exception(f"Operation failed after {self.max_retries} attempts")
+    
+    def get_reports_by_name(self, report_name: str) -> List[Dict[str, Any]]:
+        """Search for reports by name using SOQL.
+        
+        Args:
+            report_name: The name or partial name of the report to search for
+            
+        Returns:
+            List of report records with Id, Name, DeveloperName, Description, and FolderName
+        """
+        self.ensure_connected()
+        
+        # Escape single quotes in the report name for SOQL
+        escaped_name = report_name.replace("'", "\\'")
+        
+        try:
+            soql = f"""
+            SELECT Id, Name, DeveloperName, Description, FolderName
+            FROM Report
+            WHERE Name LIKE '%{escaped_name}%'
+            ORDER BY Name
+            LIMIT 10
+            """
+            
+            result = self.sf.query(soql)
+            logger.info(f"Found {len(result['records'])} reports matching '{report_name}'")
+            return result['records']
+            
+        except Exception as e:
+            logger.error(f"Failed to search for reports: {e}")
+            raise
+    
+    def get_report_data(self, report_id: str, export_format: str = 'json', include_details: bool = True) -> Any:
+        """Fetch report data using Salesforce Reports API.
+        
+        Args:
+            report_id: The Salesforce ID of the report
+            export_format: Format for the report data ('json' or 'csv')
+            include_details: Whether to include detailed report data (for JSON format)
+            
+        Returns:
+            Report data in the requested format
+        """
+        self.ensure_connected()
+        
+        try:
+            if export_format == 'csv':
+                # Direct CSV export for large reports (bypasses 2000 row limit)
+                url = f"{self.sf.base_url}analytics/reports/{report_id}?export=1&enc=UTF-8&xf=csv"
+                response = self.sf._call_salesforce('GET', url)
+                
+                if response.status_code != 200:
+                    raise SalesforceError(f"Failed to export report: {response.text}")
+                
+                return response.text
+                
+            else:
+                # JSON format with optional details
+                url = f"{self.sf.base_url}analytics/reports/{report_id}"
+                if include_details:
+                    url += "?includeDetails=true"
+                
+                response = self.sf._call_salesforce('GET', url)
+                
+                if response.status_code != 200:
+                    raise SalesforceError(f"Failed to fetch report data: {response.text}")
+                
+                return response.json()
+                
+        except Exception as e:
+            logger.error(f"Failed to fetch report data for {report_id}: {e}")
+            raise
+    
+    def describe_report(self, report_id: str) -> Dict[str, Any]:
+        """Get report metadata and structure information.
+        
+        Args:
+            report_id: The Salesforce ID of the report
+            
+        Returns:
+            Report metadata including columns, filters, and report type
+        """
+        self.ensure_connected()
+        
+        try:
+            url = f"{self.sf.base_url}analytics/reports/{report_id}/describe"
+            response = self.sf._call_salesforce('GET', url)
+            
+            if response.status_code != 200:
+                raise SalesforceError(f"Failed to describe report: {response.text}")
+            
+            return response.json()
+            
+        except Exception as e:
+            logger.error(f"Failed to describe report {report_id}: {e}")
+            raise

@@ -148,6 +148,8 @@ async def slack_command(request: Request):
                 loading_message = "🔄 Fetching today's opportunities... please wait"
             elif "yesterday" in text.lower() and "opportunit" in text.lower():
                 loading_message = "🔄 Fetching yesterday's opportunities... please wait"
+            elif "report" in text.lower():
+                loading_message = "🔄 Fetching Salesforce report... please wait"
             else:
                 loading_message = "🔄 Processing your request... please wait"
             
@@ -497,9 +499,117 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 # Fallback to simple formatting
                 return format_event_credits_simple(credits, summary_stats, event_info, user_name)
         
+        # Get Salesforce report data
+        elif "report" in text.lower():
+            # Extract report name from command
+            import re
+            
+            # Use regex to find the keyword and extract everything after it
+            report_match = re.search(r'\breports?\b\s+(.*)', text, re.IGNORECASE)
+            
+            if report_match:
+                report_name = report_match.group(1).strip()
+            else:
+                # Fallback: try simple word splitting
+                words = text.split()
+                report_name = ""
+                for i, word in enumerate(words):
+                    if word.lower() in ['report', 'reports']:
+                        report_name = ' '.join(words[i + 1:])
+                        break
+            
+            # Debug logging
+            logger.info(f"Report command - Original text: '{text}', Extracted report name: '{report_name}'")
+            
+            if not report_name:
+                return "❓ Please provide a report name after the command. Example: `/prm report Sales Pipeline`"
+            
+            report_data = _fetch_salesforce_report_by_name(report_name)
+            
+            if not report_data.get('success'):
+                error_msg = report_data.get('error', 'Unknown error')
+                if 'No reports found matching' in error_msg:
+                    return f"❌ {error_msg}\n\n💡 Try using a partial name like:\n• `/prm report Pipeline`\n• `/prm report Sales`\n• `/prm report Monthly`"
+                else:
+                    return f"❌ Error fetching report: {error_msg}"
+            
+            report_info = report_data.get('report', {})
+            data_format = report_data.get('data_format', 'unknown')
+            summary_stats = report_data.get('summary_stats', {})
+            
+            # Prepare summary data for GPT formatting
+            report_summary = {
+                "report": report_info,
+                "summary": {
+                    "total_rows": summary_stats.get('total_rows', 0),
+                    "report_type": summary_stats.get('report_type', 'Unknown'),
+                    "report_format": summary_stats.get('report_format', 'Unknown'),
+                    "columns": summary_stats.get('columns', 0),
+                    "other_matches": summary_stats.get('other_matching_reports', [])
+                }
+            }
+            
+            # For CSV format, include data preview
+            if data_format == 'csv' and 'data_preview' in summary_stats:
+                report_summary["data_preview"] = summary_stats['data_preview']
+            
+            # Use GPT to format the report summary
+            report_prompt = f"""
+            Format the following Salesforce report summary for a Slack message. Be concise but informative.
+            
+            Data: {json.dumps(report_summary, indent=2)}
+            
+            User: {user_name}
+            Request: {text}
+            
+            Create a professional summary showing:
+            1. Report name and folder
+            2. Total number of rows/records
+            3. Report type and format
+            4. If data_preview exists, show a clean preview of the first few rows
+            5. If other_matches exist, mention "Similar reports found: [list]"
+            
+            Use emojis and Slack formatting for readability. KEEP IT COMPACT for mobile viewing.
+            
+            FORMATTING RULES FOR SLACK:
+            - Use *text* for emphasis (single asterisks only)
+            - NEVER use **double asterisks**
+            - Use code blocks (```) for data preview if applicable
+            - Keep the response concise and focused on key information
+            - Use 📊 for reports, 📁 for folders, 📈 for data
+            """
+            
+            try:
+                client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that formats Salesforce report data for Slack messages. Keep responses concise and well-formatted."},
+                        {"role": "user", "content": report_prompt}
+                    ],
+                    max_tokens=800,
+                    temperature=0.2
+                )
+                
+                formatted_response = response.choices[0].message.content
+                
+                # Fix any remaining bold formatting for Slack
+                formatted_response = formatted_response.replace('**', '*')
+                formatted_response = formatted_response.replace('###', '')
+                
+                # Log the access for security
+                security_logger.log_opportunity_access(user_name, summary_stats.get('total_rows', 0), f'Slack command: {text}')
+                
+                return formatted_response
+                
+            except Exception as gpt_error:
+                logger.error(f"GPT error for report: {gpt_error}")
+                # Fallback to simple formatting
+                return format_report_simple(report_info, summary_stats, user_name)
+        
         else:
             # Handle other PRM commands
-            return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities closed today\n• `/prm yesterday's opportunities` - Get opportunities closed yesterday\n• `/prm events` - Get upcoming events (next 3 months)\n• `/prm credits [event name]` - Get event tickets/credits"
+            return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities closed today\n• `/prm yesterday's opportunities` - Get opportunities closed yesterday\n• `/prm events` - Get upcoming events (next 3 months)\n• `/prm credits [event name]` - Get event tickets/credits\n• `/prm report [report name]` - Get Salesforce report data"
             
     except Exception as e:
         logger.error(f"PRM command error: {e}")
@@ -603,6 +713,38 @@ def format_event_credits_simple(credits: list, summary_stats: dict, event_info: 
     # Show other matching events if any
     if other_matches:
         response += f"*Similar Events:* {', '.join(other_matches[:3])}\n"
+    
+    return response
+
+def format_report_simple(report_info: dict, summary_stats: dict, user_name: str) -> str:
+    """Simple fallback formatting for Salesforce reports"""
+    report_name = report_info.get('name', 'Unknown Report')
+    folder_name = report_info.get('folder', 'N/A')
+    total_rows = summary_stats.get('total_rows', 0)
+    report_type = summary_stats.get('report_type', 'Unknown')
+    report_format = summary_stats.get('report_format', 'Unknown')
+    other_matches = summary_stats.get('other_matching_reports', [])
+    
+    response = f"📊 *Salesforce Report* (requested by {user_name})\n\n"
+    response += f"*Report:* {report_name}\n"
+    response += f"*Folder:* 📁 {folder_name}\n"
+    response += f"*Total Records:* {total_rows:,}\n"
+    response += f"*Type:* {report_type} ({report_format})\n"
+    
+    # Show data preview if available
+    if 'data_preview' in summary_stats:
+        response += f"\n*Data Preview:*\n```\n"
+        preview_lines = summary_stats['data_preview']
+        for line in preview_lines[:5]:  # Show first 5 lines
+            if line.strip():  # Skip empty lines
+                response += f"{line}\n"
+        response += "```\n"
+    
+    # Show other matching reports if any
+    if other_matches:
+        response += f"\n*Similar Reports Found:*\n"
+        for match in other_matches[:3]:  # Show first 3 matches
+            response += f"• {match['name']} (📁 {match['folder']})\n"
     
     return response
 
@@ -909,6 +1051,119 @@ def _fetch_event_credits_by_name(event_name: str) -> Dict[str, Any]:
             "summary_stats": {}
         }
 
+def _fetch_salesforce_report_by_name(report_name: str) -> Dict[str, Any]:
+    """Internal function to fetch Salesforce report by name."""
+    try:
+        # Search for reports matching the name
+        reports = sf_client.get_reports_by_name(report_name)
+        
+        if not reports:
+            return {
+                "success": False,
+                "error": f"No reports found matching '{report_name}'",
+                "reports": [],
+                "report_data": None,
+                "summary_stats": {}
+            }
+        
+        # If multiple reports found, use the first one but note others
+        target_report = reports[0]
+        report_id = target_report['Id']
+        report_full_name = target_report['Name']
+        
+        other_matches = [{"name": r['Name'], "folder": r.get('FolderName', 'N/A')} 
+                        for r in reports[1:]]
+        
+        # Get report metadata
+        try:
+            report_metadata = sf_client.describe_report(report_id)
+            report_type = report_metadata.get('reportMetadata', {}).get('reportType', {}).get('type', 'Unknown')
+            
+            # Get report data based on type
+            # For large reports or complex types, we'll use CSV export
+            if report_type in ['MATRIX', 'SUMMARY'] or len(reports) > 1:
+                # Use CSV for better handling of complex reports
+                report_data = sf_client.get_report_data(report_id, export_format='csv')
+                data_format = 'csv'
+            else:
+                # Use JSON for simple tabular reports
+                report_data = sf_client.get_report_data(report_id, export_format='json', include_details=True)
+                data_format = 'json'
+            
+            # Extract summary statistics from report data
+            summary_stats = {}
+            
+            if data_format == 'json':
+                # Extract row count and other metadata from JSON response
+                fact_map = report_data.get('factMap', {})
+                report_metadata_response = report_data.get('reportMetadata', {})
+                
+                # Count total rows
+                total_rows = 0
+                if 'T!T' in fact_map:  # Total aggregation key
+                    total_rows = len(fact_map['T!T'].get('rows', []))
+                
+                summary_stats = {
+                    "total_rows": total_rows,
+                    "report_type": report_type,
+                    "report_format": report_metadata_response.get('reportFormat', 'TABULAR'),
+                    "has_details": report_data.get('hasDetailRows', False),
+                    "columns": len(report_metadata_response.get('detailColumns', [])),
+                    "other_matching_reports": other_matches
+                }
+            else:
+                # For CSV, we'll provide basic info
+                lines = report_data.split('\n')
+                summary_stats = {
+                    "total_rows": len(lines) - 1,  # Subtract header
+                    "report_type": report_type,
+                    "report_format": "CSV_EXPORT",
+                    "data_preview": lines[:5] if len(lines) > 5 else lines,  # First 5 lines
+                    "other_matching_reports": other_matches
+                }
+            
+            # Log report access for security monitoring
+            security_logger.log_opportunity_access('authenticated_user', 
+                                                 summary_stats.get('total_rows', 0), 
+                                                 f'Report query: {report_full_name}')
+            
+            return {
+                "success": True,
+                "report": {
+                    "id": report_id,
+                    "name": report_full_name,
+                    "folder": target_report.get('FolderName', 'N/A'),
+                    "description": target_report.get('Description', '')
+                },
+                "report_data": report_data,
+                "data_format": data_format,
+                "summary_stats": summary_stats,
+                "summary": f"Retrieved report '{report_full_name}' with {summary_stats.get('total_rows', 0)} rows"
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch report data: {e}")
+            return {
+                "success": False,
+                "error": f"Found report but failed to fetch data: {str(e)}",
+                "report": {
+                    "id": report_id,
+                    "name": report_full_name
+                },
+                "report_data": None,
+                "summary_stats": {}
+            }
+        
+    except Exception as e:
+        logger.error(f"Failed to get report '{report_name}': {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "reports": [],
+            "report_data": None,
+            "summary_stats": {}
+        }
+
 @mcp.tool()
 def get_todays_opportunities() -> Dict[str, Any]:
     """Get all opportunities closed today with their name, stage, and owner information."""
@@ -928,6 +1183,11 @@ def get_upcoming_events() -> Dict[str, Any]:
 def get_event_credits(event_name: str) -> Dict[str, Any]:
     """Get event credits (tickets) summary for a specific event by name. Searches for events matching the name and returns summary statistics including total count, status breakdown, duplicate count, and confirmation count."""
     return _fetch_event_credits_by_name(event_name)
+
+@mcp.tool()
+def get_salesforce_report(report_name: str) -> Dict[str, Any]:
+    """Get Salesforce report data by report name. Searches for reports matching the name and returns the report data along with summary statistics. Supports partial name matching and handles different report types (tabular, summary, matrix)."""
+    return _fetch_salesforce_report_by_name(report_name)
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
