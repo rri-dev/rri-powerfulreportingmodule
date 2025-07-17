@@ -135,45 +135,28 @@ class SalesforceClient:
         
         Args:
             report_id: The Salesforce ID of the report
-            export_format: Format for the report data ('json' or 'csv')
-            include_details: Whether to include detailed report data (for JSON format)
+            export_format: Format for the report data (only 'json' is supported by API)
+            include_details: Whether to include detailed report data
             
         Returns:
-            Report data in the requested format
+            Report data in JSON format
         """
         self.ensure_connected()
         
         try:
-            if export_format == 'csv':
-                # Direct CSV export for large reports (bypasses 2000 row limit)
-                # Using a different approach to get actual CSV data
-                url = f"{self.sf.base_url}analytics/reports/{report_id}?export=1&enc=UTF-8&xf=csv"
-                
-                # Use the session directly to get raw CSV response
-                headers = self.sf.headers.copy()
-                headers['Accept'] = 'text/csv'
-                
-                response = self.sf.session.get(url, headers=headers)
-                
-                if response.status_code != 200:
-                    # Use generic exception to avoid SalesforceError constructor issues
-                    raise Exception(f"Failed to export report: {response.status_code} - {response.text}")
-                
-                # Return the CSV content directly
-                return response.content.decode('utf-8')
-                
-            else:
-                # JSON format with optional details
-                url = f"{self.sf.base_url}analytics/reports/{report_id}"
-                if include_details:
-                    url += "?includeDetails=true"
-                
-                response = self.sf._call_salesforce('GET', url)
-                
-                if response.status_code != 200:
-                    raise Exception(f"Failed to fetch report data: {response.status_code} - {response.text}")
-                
-                return response.json()
+            # The Analytics API only supports JSON format
+            # CSV export is only available through the UI, not the API
+            url = f"{self.sf.base_url}analytics/reports/{report_id}"
+            
+            # Always include details to get the actual data
+            url += "?includeDetails=true"
+            
+            response = self.sf._call_salesforce('GET', url)
+            
+            if response.status_code != 200:
+                raise Exception(f"Failed to fetch report data: {response.status_code} - {response.text}")
+            
+            return response.json()
                 
         except Exception as e:
             logger.error(f"Failed to fetch report data for {report_id}: {e}")

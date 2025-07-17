@@ -544,43 +544,55 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 "total_rows": summary_stats.get('total_rows', 0)
             }
             
-            # Handle different data formats
-            if data_format == 'csv':
-                # For CSV, limit to first 100 rows for Slack message size limits
-                lines = actual_report_data.split('\n')
-                data_to_format["data"] = lines[:100]  # First 100 rows including header
-                data_to_format["truncated"] = len(lines) > 100
-                data_to_format["format"] = "csv"
-            else:
-                # For JSON format, extract the actual data rows
-                if isinstance(actual_report_data, dict):
-                    fact_map = actual_report_data.get('factMap', {})
-                    report_metadata = actual_report_data.get('reportMetadata', {})
-                    
-                    # Get column information
-                    columns = report_metadata.get('detailColumns', [])
-                    column_names = [col.get('label', col.get('name', '')) for col in columns]
-                    
-                    # Extract data rows
-                    rows = []
-                    if 'T!T' in fact_map:  # Total aggregation key
-                        detail_rows = fact_map['T!T'].get('rows', [])
-                        for row in detail_rows[:50]:  # Limit to 50 rows for JSON
-                            row_data = []
-                            for cell in row.get('dataCells', []):
-                                value = cell.get('label', cell.get('value', ''))
-                                row_data.append(value)
-                            if row_data:
-                                rows.append(row_data)
-                    
-                    data_to_format["columns"] = column_names
-                    data_to_format["rows"] = rows
-                    data_to_format["truncated"] = len(detail_rows) > 50 if 'detail_rows' in locals() else False
-                    data_to_format["format"] = "json"
+            # Handle JSON format data
+            if isinstance(actual_report_data, dict):
+                fact_map = actual_report_data.get('factMap', {})
+                report_metadata = actual_report_data.get('reportMetadata', {})
+                
+                # Get column information
+                columns = report_metadata.get('detailColumns', [])
+                column_names = [col.get('label', col.get('name', '')) for col in columns]
+                
+                # Extract data rows based on report type
+                rows = []
+                total_row_count = 0
+                
+                # For tabular reports, data is in T!T
+                if 'T!T' in fact_map:
+                    detail_rows = fact_map['T!T'].get('rows', [])
+                    total_row_count = len(detail_rows)
+                    for row in detail_rows[:100]:  # Limit to 100 rows for analysis
+                        row_data = []
+                        for cell in row.get('dataCells', []):
+                            value = cell.get('label', cell.get('value', ''))
+                            row_data.append(value)
+                        if row_data:
+                            rows.append(row_data)
                 else:
-                    # Fallback if data structure is unexpected
-                    data_to_format["data"] = str(actual_report_data)[:1000]
-                    data_to_format["format"] = "unknown"
+                    # For summary/matrix reports, data might be in different keys
+                    # Collect all rows from all groupings
+                    for _, group_data in fact_map.items():
+                        if isinstance(group_data, dict) and 'rows' in group_data:
+                            group_rows = group_data.get('rows', [])
+                            total_row_count += len(group_rows)
+                            for row in group_rows[:20]:  # Limit per group
+                                row_data = []
+                                for cell in row.get('dataCells', []):
+                                    value = cell.get('label', cell.get('value', ''))
+                                    row_data.append(value)
+                                if row_data and len(rows) < 100:  # Overall limit
+                                    rows.append(row_data)
+                
+                data_to_format["columns"] = column_names
+                data_to_format["rows"] = rows
+                data_to_format["total_rows_actual"] = total_row_count
+                data_to_format["truncated"] = total_row_count > len(rows)
+                data_to_format["format"] = "json"
+                data_to_format["report_type"] = report_type
+            else:
+                # Fallback if data structure is unexpected
+                data_to_format["data"] = str(actual_report_data)[:1000]
+                data_to_format["format"] = "unknown"
             
             # Use GPT to analyze and summarize the report data
             report_prompt = f"""
@@ -598,9 +610,9 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             2. Provide key insights and patterns from the data
             3. Include important statistics (totals, percentages, breakdowns)
             4. Highlight any notable trends or outliers
-            5. For CSV data: Parse and analyze the content
-            6. For JSON data: Analyze the rows and extract meaningful patterns
-            7. Keep it concise but informative (aim for 3-7 bullet points)
+            5. Analyze the rows and extract meaningful patterns
+            6. Keep it concise but informative (aim for 3-7 bullet points)
+            7. If data is grouped (summary/matrix reports), identify key groupings
             
             Examples of good summaries:
             - "150 event credits total: 80% confirmed, 15% pending, 5% cancelled"
@@ -1152,48 +1164,37 @@ def _fetch_salesforce_report_by_name(report_name: str) -> Dict[str, Any]:
             report_metadata = sf_client.describe_report(report_id)
             report_type = report_metadata.get('reportMetadata', {}).get('reportType', {}).get('type', 'Unknown')
             
-            # Get report data based on type
-            # For large reports or complex types, we'll use CSV export
-            if report_type in ['MATRIX', 'SUMMARY'] or len(reports) > 1:
-                # Use CSV for better handling of complex reports
-                report_data = sf_client.get_report_data(report_id, export_format='csv')
-                data_format = 'csv'
-            else:
-                # Use JSON for simple tabular reports
-                report_data = sf_client.get_report_data(report_id, export_format='json', include_details=True)
-                data_format = 'json'
+            # Get report data - API only supports JSON format
+            report_data = sf_client.get_report_data(report_id, export_format='json', include_details=True)
+            data_format = 'json'
             
             # Extract summary statistics from report data
             summary_stats = {}
             
-            if data_format == 'json':
-                # Extract row count and other metadata from JSON response
-                fact_map = report_data.get('factMap', {})
-                report_metadata_response = report_data.get('reportMetadata', {})
-                
-                # Count total rows
-                total_rows = 0
-                if 'T!T' in fact_map:  # Total aggregation key
-                    total_rows = len(fact_map['T!T'].get('rows', []))
-                
-                summary_stats = {
-                    "total_rows": total_rows,
-                    "report_type": report_type,
-                    "report_format": report_metadata_response.get('reportFormat', 'TABULAR'),
-                    "has_details": report_data.get('hasDetailRows', False),
-                    "columns": len(report_metadata_response.get('detailColumns', [])),
-                    "other_matching_reports": other_matches
-                }
+            # Extract row count and metadata from JSON response
+            fact_map = report_data.get('factMap', {})
+            report_metadata_response = report_data.get('reportMetadata', {})
+            
+            # Count total rows across all groupings
+            total_rows = 0
+            if 'T!T' in fact_map:
+                # Tabular report - all data in T!T
+                total_rows = len(fact_map['T!T'].get('rows', []))
             else:
-                # For CSV, we'll provide basic info
-                lines = report_data.split('\n')
-                summary_stats = {
-                    "total_rows": len(lines) - 1,  # Subtract header
-                    "report_type": report_type,
-                    "report_format": "CSV_EXPORT",
-                    "data_preview": lines[:5] if len(lines) > 5 else lines,  # First 5 lines
-                    "other_matching_reports": other_matches
-                }
+                # Summary/Matrix report - data in multiple groupings
+                for _, group_data in fact_map.items():
+                    if isinstance(group_data, dict) and 'rows' in group_data:
+                        total_rows += len(group_data.get('rows', []))
+            
+            summary_stats = {
+                "total_rows": total_rows,
+                "report_type": report_type,
+                "report_format": report_metadata_response.get('reportFormat', 'TABULAR'),
+                "has_details": report_data.get('hasDetailRows', False),
+                "columns": len(report_metadata_response.get('detailColumns', [])),
+                "groupings": len(report_metadata_response.get('groupingsDown', [])),
+                "other_matching_reports": other_matches
+            }
             
             # Log report access for security monitoring
             security_logger.log_opportunity_access('authenticated_user', 
