@@ -582,31 +582,38 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                     data_to_format["data"] = str(actual_report_data)[:1000]
                     data_to_format["format"] = "unknown"
             
-            # Use GPT to format the actual report data
+            # Use GPT to analyze and summarize the report data
             report_prompt = f"""
-            Format the following Salesforce report DATA (not summary) for a Slack message. Show the actual data in a readable table format.
+            Analyze the following Salesforce report data and create an intelligent summary for a Slack message.
             
             Report Data: {json.dumps(data_to_format, indent=2)}
             
             User: {user_name}
             Request: {text}
             
-            IMPORTANT: Show the ACTUAL DATA from the report, not just a summary.
+            IMPORTANT: Analyze the data and create a meaningful SUMMARY, not a data table.
             
-            Format the data as:
-            1. Report name at the top
-            2. For CSV format: Parse the CSV lines and create a clean table
-            3. For JSON format: Use the columns and rows to create a table
-            4. If truncated, show "Showing X of Y total rows"
-            5. Make it readable on mobile - consider using fixed-width formatting
+            Your summary should:
+            1. Start with the report name
+            2. Provide key insights and patterns from the data
+            3. Include important statistics (totals, percentages, breakdowns)
+            4. Highlight any notable trends or outliers
+            5. For CSV data: Parse and analyze the content
+            6. For JSON data: Analyze the rows and extract meaningful patterns
+            7. Keep it concise but informative (aim for 3-7 bullet points)
+            
+            Examples of good summaries:
+            - "150 event credits total: 80% confirmed, 15% pending, 5% cancelled"
+            - "Top 3 opportunities worth $2.5M, representing 65% of pipeline"
+            - "25 new accounts created this month, 40% increase from last month"
             
             FORMATTING RULES FOR SLACK:
-            - Use *text* for report name (single asterisks only)
-            - Use code blocks (```) for the data table
+            - Use *text* for report name and emphasis (single asterisks only)
+            - Use bullet points (•) for key insights
             - NEVER use **double asterisks**
-            - Keep column widths reasonable for mobile viewing
-            - Align columns for readability
-            - If data is too wide, prioritize showing the most important columns
+            - Include relevant numbers and percentages
+            - Keep it scannable and mobile-friendly
+            - Use 📊 emoji for the report name
             """
             
             try:
@@ -614,7 +621,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
-                        {"role": "system", "content": "You are a helpful assistant that formats Salesforce report DATA for Slack messages. Your primary job is to show the actual data from reports in a readable table format, NOT to summarize. Always display the raw data in a clean, organized way."},
+                        {"role": "system", "content": "You are a data analyst that creates intelligent summaries of Salesforce reports for Slack messages. Your job is to analyze the data and extract meaningful insights, patterns, and statistics. Create concise, actionable summaries that help users understand their data at a glance."},
                         {"role": "user", "content": report_prompt}
                     ],
                     max_tokens=2000,
@@ -747,54 +754,70 @@ def format_event_credits_simple(credits: list, summary_stats: dict, event_info: 
     return response
 
 def format_report_simple(report_info: dict, summary_stats: dict, user_name: str, report_data=None, data_format='unknown') -> str:
-    """Simple fallback formatting for Salesforce reports"""
+    """Simple fallback formatting for Salesforce reports - creates a basic summary"""
     report_name = report_info.get('name', 'Unknown Report')
     total_rows = summary_stats.get('total_rows', 0)
+    report_type = summary_stats.get('report_type', 'Unknown')
     
     response = f"📊 *{report_name}*\n\n"
+    response += f"*Summary:*\n"
+    response += f"• Total Records: {total_rows:,}\n"
+    response += f"• Report Type: {report_type}\n"
     
-    # Show actual data based on format
+    # Try to extract some basic insights based on format
     if data_format == 'csv' and report_data:
         lines = report_data.split('\n')
-        response += f"```\n"
-        # Show first 50 lines of CSV data
-        for i, line in enumerate(lines[:50]):
-            if line.strip():
-                response += f"{line}\n"
-        response += "```\n"
-        if len(lines) > 50:
-            response += f"\n_Showing 50 of {total_rows} total rows_\n"
+        non_empty_lines = [line for line in lines if line.strip()]
+        
+        # Basic analysis for CSV
+        if len(non_empty_lines) > 1:
+            header = non_empty_lines[0]
+            columns = header.split(',')
+            response += f"• Columns: {len(columns)}\n"
+            
+            # Sample first few column names
+            if columns:
+                col_names = [col.strip('"').strip() for col in columns[:3]]
+                response += f"• Key Fields: {', '.join(col_names)}"
+                if len(columns) > 3:
+                    response += f" (+{len(columns)-3} more)\n"
+                else:
+                    response += "\n"
     
     elif data_format == 'json' and isinstance(report_data, dict):
-        # Extract data from JSON format
+        # Extract insights from JSON format
         fact_map = report_data.get('factMap', {})
+        report_metadata = report_data.get('reportMetadata', {})
+        
+        # Get column info
+        columns = report_metadata.get('detailColumns', [])
+        if columns:
+            response += f"• Columns: {len(columns)}\n"
+            col_names = [col.get('label', col.get('name', '')) for col in columns[:3]]
+            if col_names:
+                response += f"• Key Fields: {', '.join(col_names)}"
+                if len(columns) > 3:
+                    response += f" (+{len(columns)-3} more)\n"
+                else:
+                    response += "\n"
+        
+        # Try to get some data statistics
         if 'T!T' in fact_map:
             rows = fact_map['T!T'].get('rows', [])
-            if rows:
-                response += f"```\n"
-                # Show first 30 rows
-                for i, row in enumerate(rows[:30]):
-                    if i >= 30:
-                        break
+            if rows and len(rows) > 0:
+                # Count non-empty values in first column to estimate data completeness
+                first_col_values = 0
+                for row in rows[:100]:  # Sample first 100 rows
                     cells = row.get('dataCells', [])
-                    row_values = []
-                    for cell in cells:
-                        value = cell.get('label', cell.get('value', ''))
-                        row_values.append(str(value)[:20])  # Truncate long values
-                    response += " | ".join(row_values) + "\n"
-                response += "```\n"
-                if len(rows) > 30:
-                    response += f"\n_Showing 30 of {total_rows} total rows_\n"
+                    if cells and cells[0].get('value'):
+                        first_col_values += 1
+                
+                if first_col_values > 0:
+                    completeness = (first_col_values / min(len(rows), 100)) * 100
+                    response += f"• Data Completeness: ~{completeness:.0f}%\n"
     
-    else:
-        # Fallback to preview
-        if 'data_preview' in summary_stats:
-            response += f"```\n"
-            preview_lines = summary_stats['data_preview']
-            for line in preview_lines[:10]:
-                if line.strip():
-                    response += f"{line}\n"
-            response += "```\n"
+    # Add note about limited analysis
+    response += f"\n_Basic summary of {total_rows} records. Use GPT analysis for detailed insights._"
     
     return response
 

@@ -156,7 +156,8 @@ class SalesforceClient:
                 response = self.sf.session.get(url, headers=headers)
                 
                 if response.status_code != 200:
-                    raise SalesforceError(f"Failed to export report: {response.text}")
+                    # Use generic exception to avoid SalesforceError constructor issues
+                    raise Exception(f"Failed to export report: {response.status_code} - {response.text}")
                 
                 # Return the CSV content directly
                 return response.content.decode('utf-8')
@@ -170,7 +171,7 @@ class SalesforceClient:
                 response = self.sf._call_salesforce('GET', url)
                 
                 if response.status_code != 200:
-                    raise SalesforceError(f"Failed to fetch report data: {response.text}")
+                    raise Exception(f"Failed to fetch report data: {response.status_code} - {response.text}")
                 
                 return response.json()
                 
@@ -194,7 +195,7 @@ class SalesforceClient:
             response = self.sf._call_salesforce('GET', url)
             
             if response.status_code != 200:
-                raise SalesforceError(f"Failed to describe report: {response.text}")
+                raise Exception(f"Failed to describe report: {response.status_code} - {response.text}")
             
             return response.json()
             
