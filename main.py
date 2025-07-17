@@ -615,7 +615,9 @@ def _fetch_opportunities_by_date(date_filter: str = "TODAY", date_label: str = "
         all_opportunities_soql = f"""
         SELECT Id, Name, StageName, Owner.Name, CreatedDate, Amount, CloseDate
         FROM Opportunity 
-        WHERE CloseDate = {date_filter} AND StageName = 'Closed Won'
+        WHERE CloseDate = {date_filter} 
+        AND StageName = 'Closed Won'
+        AND (NOT Name LIKE '%test%')
         ORDER BY CloseDate DESC
         """
         
@@ -628,7 +630,9 @@ def _fetch_opportunities_by_date(date_filter: str = "TODAY", date_label: str = "
                 FROM OpportunityLineItems 
                 ORDER BY TotalPrice DESC)
         FROM Opportunity 
-        WHERE CloseDate = {date_filter} AND StageName = 'Closed Won'
+        WHERE CloseDate = {date_filter} 
+        AND StageName = 'Closed Won'
+        AND (NOT Name LIKE '%test%')
         ORDER BY Amount DESC NULLS LAST
         LIMIT 3
         """
