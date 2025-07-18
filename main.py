@@ -554,6 +554,10 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 fact_map = actual_report_data.get('factMap', {})
                 report_metadata = actual_report_data.get('reportMetadata', {})
                 
+                # Get report type
+                report_type_info = report_metadata.get('reportType', {})
+                report_type = report_type_info.get('type', 'Unknown') if isinstance(report_type_info, dict) else 'Unknown'
+                
                 # Get column information
                 columns = report_metadata.get('detailColumns', [])
                 column_names = []
