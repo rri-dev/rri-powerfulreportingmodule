@@ -578,8 +578,16 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 rows = []
                 total_row_count = 0
                 
+                # Debug: Log contents of each factMap entry
+                for fm_key, fm_data in fact_map.items():
+                    if isinstance(fm_data, dict) and 'rows' in fm_data:
+                        row_count = len(fm_data.get('rows', []))
+                        logger.info(f"FactMap key '{fm_key}' has {row_count} rows")
+                        if row_count > 0:
+                            logger.info(f"First row sample from '{fm_key}': {fm_data['rows'][0] if fm_data['rows'] else 'No rows'}")
+                
                 # For tabular reports, data is in T!T
-                if 'T!T' in fact_map:
+                if 'T!T' in fact_map and fact_map['T!T'].get('rows'):
                     detail_rows = fact_map['T!T'].get('rows', [])
                     total_row_count = len(detail_rows)
                     logger.info(f"Found {total_row_count} rows in T!T")
@@ -590,21 +598,25 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                             row_data.append(value)
                         if row_data:
                             rows.append(row_data)
-                else:
+                
+                # If no data found in T!T, check other factMap keys
+                if not rows:
                     # For summary/matrix reports, data might be in different keys
-                    logger.info(f"No T!T key found, checking other factMap keys")
+                    logger.info(f"No data in T!T, checking other factMap keys")
                     # Collect all rows from all groupings
                     for key, group_data in fact_map.items():
                         if isinstance(group_data, dict) and 'rows' in group_data:
                             group_rows = group_data.get('rows', [])
-                            total_row_count += len(group_rows)
-                            for row in group_rows[:20]:  # Limit per group
-                                row_data = []
-                                for cell in row.get('dataCells', []):
-                                    value = cell.get('label', cell.get('value', ''))
-                                    row_data.append(value)
-                                if row_data and len(rows) < 100:  # Overall limit
-                                    rows.append(row_data)
+                            if group_rows:
+                                logger.info(f"Found {len(group_rows)} rows in factMap key '{key}'")
+                                total_row_count += len(group_rows)
+                                for row in group_rows[:20]:  # Limit per group
+                                    row_data = []
+                                    for cell in row.get('dataCells', []):
+                                        value = cell.get('label', cell.get('value', ''))
+                                        row_data.append(value)
+                                    if row_data and len(rows) < 100:  # Overall limit
+                                        rows.append(row_data)
                 
                 logger.info(f"Extracted {len(rows)} rows for GPT analysis")
                 data_to_format["columns"] = column_names
