@@ -682,6 +682,13 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 formatted_response = formatted_response.replace('**', '*')
                 formatted_response = formatted_response.replace('###', '')
                 
+                # Add direct link to the report
+                if hasattr(sf_client, 'sf') and sf_client.sf and sf_client.sf.base_url:
+                    # Construct the report URL - remove '/services/data/vXX.X/' from base_url
+                    instance_url = sf_client.sf.base_url.replace('/services/data/v' + sf_client.sf.version + '/', '')
+                    report_url = f"{instance_url}/lightning/r/Report/{report_id}/view"
+                    formatted_response += f"\n\n📊 <{report_url}|View Full Report in Salesforce>"
+                
                 # Log the access for security
                 security_logger.log_opportunity_access(user_name, summary_stats.get('total_rows', 0), f'Slack command: {text}')
                 
@@ -873,6 +880,14 @@ def format_report_simple(report_info: dict, summary_stats: dict, user_name: str,
     
     # Add note about limited analysis
     response += f"\n_Basic summary of {total_rows} records. Use GPT analysis for detailed insights._"
+    
+    # Add direct link to the report
+    report_id = report_info.get('id')
+    if report_id and hasattr(sf_client, 'sf') and sf_client.sf and sf_client.sf.base_url:
+        # Construct the report URL - remove '/services/data/vXX.X/' from base_url
+        instance_url = sf_client.sf.base_url.replace('/services/data/v' + sf_client.sf.version + '/', '')
+        report_url = f"{instance_url}/lightning/r/Report/{report_id}/view"
+        response += f"\n\n📊 <{report_url}|View Full Report in Salesforce>"
     
     return response
 
