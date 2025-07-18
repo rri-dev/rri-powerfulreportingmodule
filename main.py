@@ -554,6 +554,11 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 fact_map = actual_report_data.get('factMap', {})
                 report_metadata = actual_report_data.get('reportMetadata', {})
                 
+                # Debug logging
+                logger.info(f"Report data keys: {list(actual_report_data.keys())}")
+                logger.info(f"FactMap keys: {list(fact_map.keys())}")
+                logger.info(f"Report metadata keys: {list(report_metadata.keys())}")
+                
                 # Get report type
                 report_type_info = report_metadata.get('reportType', {})
                 report_type = report_type_info.get('type', 'Unknown') if isinstance(report_type_info, dict) else 'Unknown'
@@ -577,6 +582,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 if 'T!T' in fact_map:
                     detail_rows = fact_map['T!T'].get('rows', [])
                     total_row_count = len(detail_rows)
+                    logger.info(f"Found {total_row_count} rows in T!T")
                     for row in detail_rows[:100]:  # Limit to 100 rows for analysis
                         row_data = []
                         for cell in row.get('dataCells', []):
@@ -586,8 +592,9 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                             rows.append(row_data)
                 else:
                     # For summary/matrix reports, data might be in different keys
+                    logger.info(f"No T!T key found, checking other factMap keys")
                     # Collect all rows from all groupings
-                    for _, group_data in fact_map.items():
+                    for key, group_data in fact_map.items():
                         if isinstance(group_data, dict) and 'rows' in group_data:
                             group_rows = group_data.get('rows', [])
                             total_row_count += len(group_rows)
@@ -599,6 +606,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                                 if row_data and len(rows) < 100:  # Overall limit
                                     rows.append(row_data)
                 
+                logger.info(f"Extracted {len(rows)} rows for GPT analysis")
                 data_to_format["columns"] = column_names
                 data_to_format["rows"] = rows
                 data_to_format["total_rows_actual"] = total_row_count
