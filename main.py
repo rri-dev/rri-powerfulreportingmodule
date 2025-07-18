@@ -685,8 +685,13 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 # Add direct link to the report
                 report_id = report_info.get('id')
                 if report_id and hasattr(sf_client, 'sf') and sf_client.sf and sf_client.sf.base_url:
-                    # Construct the report URL - remove '/services/data/vXX.X/' from base_url
-                    instance_url = sf_client.sf.base_url.replace('/services/data/v' + str(sf_client.sf.version) + '/', '')
+                    # Extract instance URL from base_url (e.g., https://rri.my.salesforce.com/services/data/v58.0/)
+                    # We need just the domain part
+                    base_url = sf_client.sf.base_url
+                    if '/services/data/' in base_url:
+                        instance_url = base_url.split('/services/data/')[0]
+                    else:
+                        instance_url = base_url.rstrip('/')
                     report_url = f"{instance_url}/lightning/r/Report/{report_id}/view"
                     formatted_response += f"\n\n📊 <{report_url}|View Full Report in Salesforce>"
                 
@@ -885,8 +890,13 @@ def format_report_simple(report_info: dict, summary_stats: dict, user_name: str,
     # Add direct link to the report
     report_id = report_info.get('id')
     if report_id and hasattr(sf_client, 'sf') and sf_client.sf and sf_client.sf.base_url:
-        # Construct the report URL - remove '/services/data/vXX.X/' from base_url
-        instance_url = sf_client.sf.base_url.replace('/services/data/v' + str(sf_client.sf.version) + '/', '')
+        # Extract instance URL from base_url (e.g., https://rri.my.salesforce.com/services/data/v58.0/)
+        # We need just the domain part
+        base_url = sf_client.sf.base_url
+        if '/services/data/' in base_url:
+            instance_url = base_url.split('/services/data/')[0]
+        else:
+            instance_url = base_url.rstrip('/')
         report_url = f"{instance_url}/lightning/r/Report/{report_id}/view"
         response += f"\n\n📊 <{report_url}|View Full Report in Salesforce>"
     
