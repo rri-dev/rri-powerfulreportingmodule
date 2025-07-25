@@ -786,6 +786,8 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             - NEVER use **double asterisks** - they don't work in Slack
             - Use bullet points with •
             - Keep it professional but engaging
+            - Limit to 1000 tokens for the response
+            - Tailor the responses to fit sales people from the Tony Robbins world
             """
             
             try:
