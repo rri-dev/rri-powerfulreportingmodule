@@ -819,7 +819,6 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                         {"role": "system", "content": "You are a professional sales strategist expert in DISC personality assessments. Provide actionable sales strategies based on DISC profiles. Tailor responses to fit sales people from the Tony Robbins world."},
                         {"role": "user", "content": gpt_prompt}
                     ],
-                    max_tokens=1000,
                     temperature=0.3
                 )
                 
