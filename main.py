@@ -47,6 +47,10 @@ sf_client = SalesforceClient()
 # Initialize OpenAI client
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
+# GPT model configuration
+GPT_MODEL = os.getenv('GPT_MODEL', 'gpt-4o-mini')
+logger.info(f"Using GPT model: {GPT_MODEL}")
+
 def add_security_headers(response):
     """Add security headers to response."""
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -286,7 +290,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             try:
                 client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model=GPT_MODEL,
                     messages=[
                         {"role": "system", "content": "You are a helpful sales assistant that formats Salesforce data for Slack messages. Keep responses concise."},
                         {"role": "user", "content": gpt_prompt}
@@ -367,7 +371,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             try:
                 client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model=GPT_MODEL,
                     messages=[
                         {"role": "system", "content": "You are a helpful assistant that formats event data for Slack messages. Keep responses concise and well-formatted."},
                         {"role": "user", "content": events_prompt}
@@ -476,7 +480,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             try:
                 client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model=GPT_MODEL,
                     messages=[
                         {"role": "system", "content": "You are a helpful assistant that formats event credits data for Slack messages. Keep responses concise and well-formatted."},
                         {"role": "user", "content": credits_prompt}
@@ -669,7 +673,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             try:
                 client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model=GPT_MODEL,
                     messages=[
                         {"role": "system", "content": "You are a data analyst that creates intelligent summaries of Salesforce reports for Slack messages. Your job is to analyze the data and extract meaningful insights, patterns, and statistics. Create concise, actionable summaries that help users understand their data at a glance."},
                         {"role": "user", "content": report_prompt}
@@ -810,7 +814,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             try:
                 client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model=GPT_MODEL,
                     messages=[
                         {"role": "system", "content": "You are a professional sales strategist expert in DISC personality assessments. Provide actionable sales strategies based on DISC profiles. Tailor responses to fit sales people from the Tony Robbins world."},
                         {"role": "user", "content": gpt_prompt}
