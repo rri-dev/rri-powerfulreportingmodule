@@ -1449,13 +1449,12 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
                     logger.error(f"Error querying basic Lead: {e2}")
             
             # Try Account if Lead not found
-            # Note: Person Accounts use PersonEmail, Business Accounts might use custom Email__c
+            # Note: Person Accounts use PersonEmail
             account_soql = f"""
             SELECT Id, PersonEmail, Name, FirstName, LastName,
                    Natural_DISC__c, Adaptive_DISC__c
             FROM Account 
             WHERE PersonEmail = '{email_escaped}'
-            OR Email__c = '{email_escaped}'
             LIMIT 1
             """
             
@@ -1483,7 +1482,6 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
                 SELECT Id, PersonEmail, Name, FirstName, LastName
                 FROM Account 
                 WHERE PersonEmail = '{email_escaped}'
-                OR Email__c = '{email_escaped}'
                 LIMIT 1
                 """
                 
