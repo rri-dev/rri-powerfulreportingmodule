@@ -294,9 +294,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                     messages=[
                         {"role": "system", "content": "You are a helpful sales assistant that formats Salesforce data for Slack messages. Keep responses concise."},
                         {"role": "user", "content": gpt_prompt}
-                    ],
-                    max_tokens=500,
-                    temperature=0.2
+                    ]
                 )
                 
                 formatted_response = response.choices[0].message.content
@@ -375,9 +373,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                     messages=[
                         {"role": "system", "content": "You are a helpful assistant that formats event data for Slack messages. Keep responses concise and well-formatted."},
                         {"role": "user", "content": events_prompt}
-                    ],
-                    max_tokens=800,
-                    temperature=0.2
+                    ]
                 )
                 
                 formatted_response = response.choices[0].message.content
@@ -484,9 +480,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                     messages=[
                         {"role": "system", "content": "You are a helpful assistant that formats event credits data for Slack messages. Keep responses concise and well-formatted."},
                         {"role": "user", "content": credits_prompt}
-                    ],
-                    max_tokens=800,
-                    temperature=0.2
+                    ]
                 )
                 
                 formatted_response = response.choices[0].message.content
@@ -677,9 +671,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                     messages=[
                         {"role": "system", "content": "You are a data analyst that creates intelligent summaries of Salesforce reports for Slack messages. Your job is to analyze the data and extract meaningful insights, patterns, and statistics. Create concise, actionable summaries that help users understand their data at a glance."},
                         {"role": "user", "content": report_prompt}
-                    ],
-                    max_tokens=2000,
-                    temperature=0.1
+                    ]
                 )
                 
                 formatted_response = response.choices[0].message.content
@@ -818,8 +810,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                     messages=[
                         {"role": "system", "content": "You are a professional sales strategist expert in DISC personality assessments. Provide actionable sales strategies based on DISC profiles. Tailor responses to fit sales people from the Tony Robbins world."},
                         {"role": "user", "content": gpt_prompt}
-                    ],
-                    temperature=0.3
+                    ]
                 )
                 
                 formatted_response = response.choices[0].message.content
