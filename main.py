@@ -1544,10 +1544,77 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
                 except Exception as e2:
                     logger.error(f"Error querying basic Lead: {e2}")
             
+            # Try Account if Contact and Lead not found
+            # Note: Person Accounts use PersonEmail, Business Accounts might use custom Email__c
+            account_soql = f"""
+            SELECT Id, PersonEmail, Name, FirstName, LastName,
+                   DISC_D__c, DISC_I__c, DISC_S__c, DISC_C__c,
+                   DISC_Profile__c, DISC_Type__c
+            FROM Account 
+            WHERE PersonEmail = '{email_escaped}'
+            OR Email__c = '{email_escaped}'
+            LIMIT 1
+            """
+            
+            try:
+                account_result = sf.query(account_soql)
+                if account_result['totalSize'] > 0:
+                    account = account_result['records'][0]
+                    return {
+                        "found": True,
+                        "type": "Account",
+                        "id": account.get('Id'),
+                        "email": email_original,
+                        "firstName": account.get('FirstName', ''),
+                        "lastName": account.get('LastName', ''),
+                        "name": account.get('Name', ''),
+                        "disc_d": account.get('DISC_D__c', 0),
+                        "disc_i": account.get('DISC_I__c', 0),
+                        "disc_s": account.get('DISC_S__c', 0),
+                        "disc_c": account.get('DISC_C__c', 0),
+                        "disc_profile": account.get('DISC_Profile__c', ''),
+                        "disc_type": account.get('DISC_Type__c', '')
+                    }
+            except Exception as e:
+                # Try without DISC fields
+                logger.warning(f"Error querying Account DISC fields: {e}")
+                
+                # Try basic Account query without DISC fields
+                basic_account_soql = f"""
+                SELECT Id, PersonEmail, Name, FirstName, LastName
+                FROM Account 
+                WHERE PersonEmail = '{email_escaped}'
+                OR Email__c = '{email_escaped}'
+                LIMIT 1
+                """
+                
+                try:
+                    basic_result = sf.query(basic_account_soql)
+                    if basic_result['totalSize'] > 0:
+                        account = basic_result['records'][0]
+                        return {
+                            "found": True,
+                            "type": "Account",
+                            "id": account.get('Id'),
+                            "email": email_original,
+                            "firstName": account.get('FirstName', ''),
+                            "lastName": account.get('LastName', ''),
+                            "name": account.get('Name', ''),
+                            "disc_d": None,
+                            "disc_i": None,
+                            "disc_s": None,
+                            "disc_c": None,
+                            "disc_profile": None,
+                            "disc_type": None,
+                            "error": "DISC profile data not available"
+                        }
+                except Exception as e2:
+                    logger.error(f"Error querying basic Account: {e2}")
+            
             return {
                 "found": False,
                 "email": email_original,
-                "error": f"No Contact or Lead found with email: {email_original}"
+                "error": f"No Contact, Lead, or Account found with email: {email_original}"
             }
         
         # Fetch both profiles
