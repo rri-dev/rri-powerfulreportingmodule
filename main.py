@@ -150,6 +150,8 @@ async def slack_command(request: Request):
                 loading_message = "🔄 Fetching yesterday's opportunities... please wait"
             elif "report" in text.lower():
                 loading_message = "🔄 Fetching Salesforce report... please wait"
+            elif "compare disc" in text.lower():
+                loading_message = "🔍 Analyzing DISC profiles for sales strategy... please wait"
             else:
                 loading_message = "🔄 Processing your request... please wait"
             
@@ -705,9 +707,122 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 # Fallback to simple formatting
                 return format_report_simple(report_info, summary_stats, user_name, actual_report_data, data_format)
         
+        # Get DISC profile comparison for sales strategy
+        elif "compare disc" in text.lower():
+            # Extract emails from command
+            import re
+            
+            # Use regex to extract two email addresses
+            email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
+            emails = re.findall(email_pattern, text)
+            
+            if len(emails) < 2:
+                return "❓ Please provide two email addresses. Example: `/prm compare disc john.doe@company.com jane.smith@company.com`"
+            
+            seller_email = emails[0]
+            prospect_email = emails[1]
+            
+            # Debug logging
+            logger.info(f"DISC comparison - Seller: '{seller_email}', Prospect: '{prospect_email}'")
+            
+            disc_data = _fetch_disc_profiles_for_sales_strategy(seller_email, prospect_email)
+            
+            if not disc_data.get('success'):
+                return f"❌ Error: {disc_data.get('error', 'Failed to fetch DISC profiles')}"
+            
+            seller_profile = disc_data.get('seller', {})
+            prospect_profile = disc_data.get('prospect', {})
+            
+            # Check if DISC data is available
+            if seller_profile.get('error') == "DISC profile data not available" or prospect_profile.get('error') == "DISC profile data not available":
+                missing_person = []
+                if seller_profile.get('error') == "DISC profile data not available":
+                    missing_person.append(f"{seller_profile['name']} ({seller_email})")
+                if prospect_profile.get('error') == "DISC profile data not available":
+                    missing_person.append(f"{prospect_profile['name']} ({prospect_email})")
+                
+                return f"❌ DISC profile data not available for: {', '.join(missing_person)}\n\n💡 DISC assessments need to be completed first."
+            
+            # Prepare data for GPT formatting
+            disc_summary = {
+                "seller": {
+                    "name": seller_profile.get('name', 'Unknown'),
+                    "email": seller_profile.get('email', ''),
+                    "disc_d": seller_profile.get('disc_d', 0),
+                    "disc_i": seller_profile.get('disc_i', 0),
+                    "disc_s": seller_profile.get('disc_s', 0),
+                    "disc_c": seller_profile.get('disc_c', 0),
+                    "type": seller_profile.get('disc_type') or seller_profile.get('calculated_type', 'Unknown')
+                },
+                "prospect": {
+                    "name": prospect_profile.get('name', 'Unknown'),
+                    "email": prospect_profile.get('email', ''),
+                    "disc_d": prospect_profile.get('disc_d', 0),
+                    "disc_i": prospect_profile.get('disc_i', 0),
+                    "disc_s": prospect_profile.get('disc_s', 0),
+                    "disc_c": prospect_profile.get('disc_c', 0),
+                    "type": prospect_profile.get('disc_type') or prospect_profile.get('calculated_type', 'Unknown')
+                }
+            }
+            
+            # Use GPT to create sales strategy
+            gpt_prompt = f"""
+            Create a comprehensive DISC-based sales strategy for a seller approaching a prospect.
+            
+            Data: {json.dumps(disc_summary, indent=2)}
+            
+            User: {user_name}
+            
+            Generate a professional sales strategy that includes:
+            1. Brief profile summaries for both people
+            2. Communication approach - How the seller should communicate
+            3. Presentation style - What type of presentation will resonate
+            4. Decision-making insights - How the prospect makes decisions
+            5. Likely objections and how to handle them
+            6. Closing techniques that work for the prospect's profile
+            7. Key adjustments the seller needs to make based on their own profile
+            
+            Format using Slack markdown with emojis. Be specific and actionable.
+            Focus on practical sales tactics, not generic advice.
+            
+            IMPORTANT FORMATTING RULES FOR SLACK:
+            - Use *text* for emphasis (single asterisks only)
+            - NEVER use **double asterisks** - they don't work in Slack
+            - Use bullet points with •
+            - Keep it professional but engaging
+            """
+            
+            try:
+                client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You are a professional sales strategist expert in DISC personality assessments. Provide actionable sales strategies based on DISC profiles."},
+                        {"role": "user", "content": gpt_prompt}
+                    ],
+                    max_tokens=1000,
+                    temperature=0.3
+                )
+                
+                formatted_response = response.choices[0].message.content
+                
+                # Fix any remaining bold formatting for Slack
+                formatted_response = formatted_response.replace('**', '*')
+                formatted_response = formatted_response.replace('###', '')
+                
+                # Log the access for security
+                security_logger.log_opportunity_access(user_name, 2, f'DISC comparison: {seller_email} to {prospect_email}')
+                
+                return formatted_response
+                
+            except Exception as gpt_error:
+                logger.error(f"GPT error for DISC strategy: {gpt_error}")
+                # Fallback to simple formatting
+                return format_disc_sales_strategy_simple(seller_profile, prospect_profile, user_name)
+        
         else:
             # Handle other PRM commands
-            return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities closed today\n• `/prm yesterday's opportunities` - Get opportunities closed yesterday\n• `/prm events` - Get upcoming events (next 3 months)\n• `/prm credits [event name]` - Get event tickets/credits\n• `/prm report [report name]` - Get Salesforce report data"
+            return f"🤖 Hi {user_name}! Available commands:\n• `/prm today's opportunities` - Get opportunities closed today\n• `/prm yesterday's opportunities` - Get opportunities closed yesterday\n• `/prm events` - Get upcoming events (next 3 months)\n• `/prm credits [event name]` - Get event tickets/credits\n• `/prm report [report name]` - Get Salesforce report data\n• `/prm compare disc [seller email] [prospect email]` - Get DISC-based sales strategy"
             
     except Exception as e:
         logger.error(f"PRM command error: {e}", exc_info=True)
@@ -899,6 +1014,66 @@ def format_report_simple(report_info: dict, summary_stats: dict, user_name: str,
             instance_url = base_url.rstrip('/')
         report_url = f"{instance_url}/lightning/r/Report/{report_id}/view"
         response += f"\n\n📊 <{report_url}|View Full Report in Salesforce>"
+    
+    return response
+
+def format_disc_sales_strategy_simple(seller_profile: dict, prospect_profile: dict, user_name: str) -> str:
+    """Simple fallback formatting for DISC sales strategy"""
+    response = f"🎯 *DISC Sales Strategy* (requested by {user_name})\n\n"
+    
+    # Seller profile
+    seller_name = seller_profile.get('name', 'Unknown')
+    seller_email = seller_profile.get('email', '')
+    response += f"*Seller:* {seller_name} ({seller_email})\n"
+    
+    if seller_profile.get('disc_d') is not None:
+        response += f"• D: {seller_profile.get('disc_d', 0)}% | I: {seller_profile.get('disc_i', 0)}% | S: {seller_profile.get('disc_s', 0)}% | C: {seller_profile.get('disc_c', 0)}%\n"
+        response += f"• Type: {seller_profile.get('calculated_type', 'Unknown')}\n"
+    else:
+        response += "• DISC profile data not available\n"
+    
+    response += "\n"
+    
+    # Prospect profile
+    prospect_name = prospect_profile.get('name', 'Unknown')
+    prospect_email = prospect_profile.get('email', '')
+    response += f"*Prospect:* {prospect_name} ({prospect_email})\n"
+    
+    if prospect_profile.get('disc_d') is not None:
+        response += f"• D: {prospect_profile.get('disc_d', 0)}% | I: {prospect_profile.get('disc_i', 0)}% | S: {prospect_profile.get('disc_s', 0)}% | C: {prospect_profile.get('disc_c', 0)}%\n"
+        response += f"• Type: {prospect_profile.get('calculated_type', 'Unknown')}\n"
+    else:
+        response += "• DISC profile data not available\n"
+    
+    response += "\n*Basic Strategy:*\n"
+    
+    # Basic compatibility insights based on DISC scores
+    if seller_profile.get('disc_d') is not None and prospect_profile.get('disc_d') is not None:
+        # High D prospect
+        if prospect_profile.get('disc_d', 0) > 65:
+            response += "• Be direct and results-focused\n"
+            response += "• Lead with bottom-line benefits\n"
+            response += "• Keep presentations brief\n"
+        
+        # High I prospect  
+        if prospect_profile.get('disc_i', 0) > 65:
+            response += "• Build personal rapport first\n"
+            response += "• Use stories and testimonials\n"
+            response += "• Make it fun and engaging\n"
+            
+        # High S prospect
+        if prospect_profile.get('disc_s', 0) > 65:
+            response += "• Take time to build trust\n"
+            response += "• Emphasize stability and support\n"
+            response += "• Avoid high-pressure tactics\n"
+            
+        # High C prospect
+        if prospect_profile.get('disc_c', 0) > 65:
+            response += "• Provide detailed information\n"
+            response += "• Use data and logic\n"
+            response += "• Allow time for analysis\n"
+    else:
+        response += "• Complete DISC assessments needed for detailed strategy\n"
     
     return response
 
@@ -1205,6 +1380,261 @@ def _fetch_event_credits_by_name(event_name: str) -> Dict[str, Any]:
             "summary_stats": {}
         }
 
+def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: str) -> Dict[str, Any]:
+    """Internal function to fetch DISC profiles for sales strategy comparison."""
+    try:
+        from lib.soql_utils import escape_soql_string
+        import re
+        
+        # Validate email format
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        
+        if not re.match(email_pattern, seller_email):
+            return {
+                "success": False,
+                "error": f"Invalid seller email format: {seller_email}",
+                "seller": None,
+                "prospect": None
+            }
+            
+        if not re.match(email_pattern, prospect_email):
+            return {
+                "success": False,
+                "error": f"Invalid prospect email format: {prospect_email}",
+                "seller": None,
+                "prospect": None
+            }
+        
+        sf = sf_client.get_client()
+        
+        # Escape emails for safe SOQL queries
+        seller_email_escaped = escape_soql_string(seller_email.lower())
+        prospect_email_escaped = escape_soql_string(prospect_email.lower())
+        
+        # Query for DISC profiles - first try Contact, then Lead
+        # Note: DISC fields might be custom fields like DISC_D__c, DISC_I__c, etc.
+        # We'll try common patterns and adjust if needed
+        
+        def fetch_profile(email_escaped: str, email_original: str):
+            """Helper function to fetch a single profile from Contact or Lead"""
+            # Try Contact first
+            contact_soql = f"""
+            SELECT Id, Email, FirstName, LastName, Name,
+                   DISC_D__c, DISC_I__c, DISC_S__c, DISC_C__c,
+                   DISC_Profile__c, DISC_Type__c
+            FROM Contact 
+            WHERE Email = '{email_escaped}'
+            LIMIT 1
+            """
+            
+            try:
+                contact_result = sf.query(contact_soql)
+                if contact_result['totalSize'] > 0:
+                    contact = contact_result['records'][0]
+                    return {
+                        "found": True,
+                        "type": "Contact",
+                        "id": contact.get('Id'),
+                        "email": email_original,
+                        "firstName": contact.get('FirstName', ''),
+                        "lastName": contact.get('LastName', ''),
+                        "name": contact.get('Name', ''),
+                        "disc_d": contact.get('DISC_D__c', 0),
+                        "disc_i": contact.get('DISC_I__c', 0),
+                        "disc_s": contact.get('DISC_S__c', 0),
+                        "disc_c": contact.get('DISC_C__c', 0),
+                        "disc_profile": contact.get('DISC_Profile__c', ''),
+                        "disc_type": contact.get('DISC_Type__c', '')
+                    }
+            except Exception as e:
+                # DISC fields might not exist or have different names
+                logger.warning(f"Error querying Contact DISC fields: {e}")
+                
+                # Try without DISC fields to see if contact exists
+                basic_contact_soql = f"""
+                SELECT Id, Email, FirstName, LastName, Name
+                FROM Contact 
+                WHERE Email = '{email_escaped}'
+                LIMIT 1
+                """
+                
+                try:
+                    basic_result = sf.query(basic_contact_soql)
+                    if basic_result['totalSize'] > 0:
+                        contact = basic_result['records'][0]
+                        return {
+                            "found": True,
+                            "type": "Contact",
+                            "id": contact.get('Id'),
+                            "email": email_original,
+                            "firstName": contact.get('FirstName', ''),
+                            "lastName": contact.get('LastName', ''),
+                            "name": contact.get('Name', ''),
+                            "disc_d": None,
+                            "disc_i": None,
+                            "disc_s": None,
+                            "disc_c": None,
+                            "disc_profile": None,
+                            "disc_type": None,
+                            "error": "DISC profile data not available"
+                        }
+                except Exception as e2:
+                    logger.error(f"Error querying basic Contact: {e2}")
+            
+            # Try Lead if Contact not found
+            lead_soql = f"""
+            SELECT Id, Email, FirstName, LastName, Name,
+                   DISC_D__c, DISC_I__c, DISC_S__c, DISC_C__c,
+                   DISC_Profile__c, DISC_Type__c
+            FROM Lead 
+            WHERE Email = '{email_escaped}'
+            LIMIT 1
+            """
+            
+            try:
+                lead_result = sf.query(lead_soql)
+                if lead_result['totalSize'] > 0:
+                    lead = lead_result['records'][0]
+                    return {
+                        "found": True,
+                        "type": "Lead",
+                        "id": lead.get('Id'),
+                        "email": email_original,
+                        "firstName": lead.get('FirstName', ''),
+                        "lastName": lead.get('LastName', ''),
+                        "name": lead.get('Name', ''),
+                        "disc_d": lead.get('DISC_D__c', 0),
+                        "disc_i": lead.get('DISC_I__c', 0),
+                        "disc_s": lead.get('DISC_S__c', 0),
+                        "disc_c": lead.get('DISC_C__c', 0),
+                        "disc_profile": lead.get('DISC_Profile__c', ''),
+                        "disc_type": lead.get('DISC_Type__c', '')
+                    }
+            except Exception as e:
+                # Try without DISC fields
+                logger.warning(f"Error querying Lead DISC fields: {e}")
+                
+                basic_lead_soql = f"""
+                SELECT Id, Email, FirstName, LastName, Name
+                FROM Lead 
+                WHERE Email = '{email_escaped}'
+                LIMIT 1
+                """
+                
+                try:
+                    basic_result = sf.query(basic_lead_soql)
+                    if basic_result['totalSize'] > 0:
+                        lead = basic_result['records'][0]
+                        return {
+                            "found": True,
+                            "type": "Lead",
+                            "id": lead.get('Id'),
+                            "email": email_original,
+                            "firstName": lead.get('FirstName', ''),
+                            "lastName": lead.get('LastName', ''),
+                            "name": lead.get('Name', ''),
+                            "disc_d": None,
+                            "disc_i": None,
+                            "disc_s": None,
+                            "disc_c": None,
+                            "disc_profile": None,
+                            "disc_type": None,
+                            "error": "DISC profile data not available"
+                        }
+                except Exception as e2:
+                    logger.error(f"Error querying basic Lead: {e2}")
+            
+            return {
+                "found": False,
+                "email": email_original,
+                "error": f"No Contact or Lead found with email: {email_original}"
+            }
+        
+        # Fetch both profiles
+        seller_profile = fetch_profile(seller_email_escaped, seller_email)
+        prospect_profile = fetch_profile(prospect_email_escaped, prospect_email)
+        
+        # Check if both profiles were found
+        if not seller_profile['found']:
+            return {
+                "success": False,
+                "error": seller_profile['error'],
+                "seller": seller_profile,
+                "prospect": None
+            }
+            
+        if not prospect_profile['found']:
+            return {
+                "success": False,
+                "error": prospect_profile['error'],
+                "seller": seller_profile,
+                "prospect": prospect_profile
+            }
+        
+        # Calculate DISC types if not provided
+        def get_disc_type(profile):
+            if profile.get('disc_type'):
+                return profile['disc_type']
+            
+            # Calculate dominant traits
+            d = profile.get('disc_d', 0) or 0
+            i = profile.get('disc_i', 0) or 0
+            s = profile.get('disc_s', 0) or 0
+            c = profile.get('disc_c', 0) or 0
+            
+            # Find the two highest scores
+            scores = [('D', d), ('I', i), ('S', s), ('C', c)]
+            scores.sort(key=lambda x: x[1], reverse=True)
+            
+            if scores[0][1] > 0:
+                primary = scores[0][0]
+                secondary = scores[1][0] if scores[1][1] > 50 else ''
+                
+                # Common DISC type descriptions
+                type_map = {
+                    'DI': 'Decisive Influencer',
+                    'DC': 'Decisive Analyst',
+                    'DS': 'Decisive Supporter',
+                    'ID': 'Enthusiastic Driver',
+                    'IS': 'Enthusiastic Supporter',
+                    'IC': 'Enthusiastic Analyst',
+                    'SD': 'Supportive Driver',
+                    'SI': 'Supportive Influencer',
+                    'SC': 'Supportive Analyst',
+                    'CD': 'Analytical Driver',
+                    'CI': 'Analytical Influencer',
+                    'CS': 'Analytical Supporter',
+                    'D': 'Driver',
+                    'I': 'Influencer',
+                    'S': 'Supporter',
+                    'C': 'Analyst'
+                }
+                
+                key = primary + secondary
+                return type_map.get(key, type_map.get(primary, 'Unknown'))
+            
+            return 'Unknown'
+        
+        # Add calculated types
+        seller_profile['calculated_type'] = get_disc_type(seller_profile)
+        prospect_profile['calculated_type'] = get_disc_type(prospect_profile)
+        
+        return {
+            "success": True,
+            "seller": seller_profile,
+            "prospect": prospect_profile,
+            "summary": f"DISC comparison for {seller_profile['name']} selling to {prospect_profile['name']}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch DISC profiles: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "seller": None,
+            "prospect": None
+        }
+
 def _fetch_salesforce_report_by_name(report_name: str) -> Dict[str, Any]:
     """Internal function to fetch Salesforce report by name."""
     try:
@@ -1331,6 +1761,11 @@ def get_event_credits(event_name: str) -> Dict[str, Any]:
 def get_salesforce_report(report_name: str) -> Dict[str, Any]:
     """Get Salesforce report data by report name. Searches for reports matching the name and returns the report data along with summary statistics. Supports partial name matching and handles different report types (tabular, summary, matrix)."""
     return _fetch_salesforce_report_by_name(report_name)
+
+@mcp.tool()
+def get_disc_sales_strategy(seller_email: str, prospect_email: str) -> Dict[str, Any]:
+    """Get DISC-based sales strategy recommendations for how a seller should approach a prospect. Fetches DISC personality profiles for both people and provides tailored sales guidance including communication style, presentation approach, objection handling, and closing techniques."""
+    return _fetch_disc_profiles_for_sales_strategy(seller_email, prospect_email)
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
