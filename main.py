@@ -1388,68 +1388,13 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
         seller_email_escaped = escape_soql_string(seller_email)
         prospect_email_escaped = escape_soql_string(prospect_email)
         
-        # Query for DISC profiles - first try Contact, then Lead
-        # Note: DISC fields might be custom fields like DISC_D__c, DISC_I__c, etc.
+        # Query for DISC profiles - try Lead and Account
+        # Note: DISC fields might be custom fields like Natural_DISC__c, Adaptive_DISC__c
         # We'll try common patterns and adjust if needed
         
         def fetch_profile(email_escaped: str, email_original: str):
-            """Helper function to fetch a single profile from Contact or Lead"""
-            # Try Contact first
-            contact_soql = f"""
-            SELECT Id, Email, FirstName, LastName, Name,
-                   Natural_DISC__c, Adaptive_DISC__c
-            FROM Contact 
-            WHERE Email = '{email_escaped}'
-            LIMIT 1
-            """
-            
-            try:
-                contact_result = sf.query(contact_soql)
-                if contact_result['totalSize'] > 0:
-                    contact = contact_result['records'][0]
-                    return {
-                        "found": True,
-                        "type": "Contact",
-                        "id": contact.get('Id'),
-                        "email": email_original,
-                        "firstName": contact.get('FirstName', ''),
-                        "lastName": contact.get('LastName', ''),
-                        "name": contact.get('Name', ''),
-                        "natural_disc": contact.get('Natural_DISC__c', ''),
-                        "adaptive_disc": contact.get('Adaptive_DISC__c', '')
-                    }
-            except Exception as e:
-                # DISC fields might not exist or have different names
-                logger.warning(f"Error querying Contact DISC fields: {e}")
-                
-                # Try without DISC fields to see if contact exists
-                basic_contact_soql = f"""
-                SELECT Id, Email, FirstName, LastName, Name
-                FROM Contact 
-                WHERE Email = '{email_escaped}'
-                LIMIT 1
-                """
-                
-                try:
-                    basic_result = sf.query(basic_contact_soql)
-                    if basic_result['totalSize'] > 0:
-                        contact = basic_result['records'][0]
-                        return {
-                            "found": True,
-                            "type": "Contact",
-                            "id": contact.get('Id'),
-                            "email": email_original,
-                            "firstName": contact.get('FirstName', ''),
-                            "lastName": contact.get('LastName', ''),
-                            "name": contact.get('Name', ''),
-                            "natural_disc": None,
-                            "adaptive_disc": None,
-                            "error": "DISC profile data not available"
-                        }
-                except Exception as e2:
-                    logger.error(f"Error querying basic Contact: {e2}")
-            
-            # Try Lead if Contact not found
+            """Helper function to fetch a single profile from Lead or Account"""
+            # Try Lead first
             lead_soql = f"""
             SELECT Id, Email, FirstName, LastName, Name,
                    Natural_DISC__c, Adaptive_DISC__c
@@ -1503,7 +1448,7 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
                 except Exception as e2:
                     logger.error(f"Error querying basic Lead: {e2}")
             
-            # Try Account if Contact and Lead not found
+            # Try Account if Lead not found
             # Note: Person Accounts use PersonEmail, Business Accounts might use custom Email__c
             account_soql = f"""
             SELECT Id, PersonEmail, Name, FirstName, LastName,
@@ -1564,7 +1509,7 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
             return {
                 "found": False,
                 "email": email_original,
-                "error": f"No Contact, Lead, or Account found with email: {email_original}"
+                "error": f"No Lead or Account found with email: {email_original}"
             }
         
         # Fetch both profiles
