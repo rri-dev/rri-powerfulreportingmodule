@@ -749,13 +749,29 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                     "name": seller_profile.get('name', 'Unknown'),
                     "email": seller_profile.get('email', ''),
                     "natural_disc": seller_profile.get('natural_disc', ''),
-                    "adaptive_disc": seller_profile.get('adaptive_disc', '')
+                    "adaptive_disc": seller_profile.get('adaptive_disc', ''),
+                    "natural_d_score": seller_profile.get('natural_d_score'),
+                    "natural_i_score": seller_profile.get('natural_i_score'),
+                    "natural_s_score": seller_profile.get('natural_s_score'),
+                    "natural_c_score": seller_profile.get('natural_c_score'),
+                    "adaptive_d_score": seller_profile.get('adaptive_d_score'),
+                    "adaptive_i_score": seller_profile.get('adaptive_i_score'),
+                    "adaptive_s_score": seller_profile.get('adaptive_s_score'),
+                    "adaptive_c_score": seller_profile.get('adaptive_c_score')
                 },
                 "prospect": {
                     "name": prospect_profile.get('name', 'Unknown'),
                     "email": prospect_profile.get('email', ''),
                     "natural_disc": prospect_profile.get('natural_disc', ''),
-                    "adaptive_disc": prospect_profile.get('adaptive_disc', '')
+                    "adaptive_disc": prospect_profile.get('adaptive_disc', ''),
+                    "natural_d_score": prospect_profile.get('natural_d_score'),
+                    "natural_i_score": prospect_profile.get('natural_i_score'),
+                    "natural_s_score": prospect_profile.get('natural_s_score'),
+                    "natural_c_score": prospect_profile.get('natural_c_score'),
+                    "adaptive_d_score": prospect_profile.get('adaptive_d_score'),
+                    "adaptive_i_score": prospect_profile.get('adaptive_i_score'),
+                    "adaptive_s_score": prospect_profile.get('adaptive_s_score'),
+                    "adaptive_c_score": prospect_profile.get('adaptive_c_score')
                 }
             }
             
@@ -1399,7 +1415,9 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
             # Try Lead first
             lead_soql = f"""
             SELECT Id, Email, FirstName, LastName, Name,
-                   Natural_DISC__c, Adaptive_DISC__c
+                   Natural_DISC__c, Adaptive_DISC__c,
+                   Natural_D_Score__c, Natural_I_Score__c, Natural_S_Score__c, Natural_C_Score__c,
+                   Adaptive_D_Score__c, Adaptive_I_Score__c, Adaptive_S_Score__c, Adaptive_C_Score__c
             FROM Lead 
             WHERE Email = '{email_escaped}'
             LIMIT 1
@@ -1418,7 +1436,15 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
                         "lastName": lead.get('LastName', ''),
                         "name": lead.get('Name', ''),
                         "natural_disc": lead.get('Natural_DISC__c', ''),
-                        "adaptive_disc": lead.get('Adaptive_DISC__c', '')
+                        "adaptive_disc": lead.get('Adaptive_DISC__c', ''),
+                        "natural_d_score": lead.get('Natural_D_Score__c'),
+                        "natural_i_score": lead.get('Natural_I_Score__c'),
+                        "natural_s_score": lead.get('Natural_S_Score__c'),
+                        "natural_c_score": lead.get('Natural_C_Score__c'),
+                        "adaptive_d_score": lead.get('Adaptive_D_Score__c'),
+                        "adaptive_i_score": lead.get('Adaptive_I_Score__c'),
+                        "adaptive_s_score": lead.get('Adaptive_S_Score__c'),
+                        "adaptive_c_score": lead.get('Adaptive_C_Score__c')
                     }
             except Exception as e:
                 # Try without DISC fields
@@ -1454,7 +1480,9 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
             # Note: Person Accounts use PersonEmail
             account_soql = f"""
             SELECT Id, PersonEmail, Name, FirstName, LastName,
-                   Natural_DISC__c, Adaptive_DISC__c
+                   Natural_DISC__c, Adaptive_DISC__c,
+                   Natural_D_Score__c, Natural_I_Score__c, Natural_S_Score__c, Natural_C_Score__c,
+                   Adaptive_D_Score__c, Adaptive_I_Score__c, Adaptive_S_Score__c, Adaptive_C_Score__c
             FROM Account 
             WHERE PersonEmail = '{email_escaped}'
             LIMIT 1
@@ -1473,7 +1501,15 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
                         "lastName": account.get('LastName', ''),
                         "name": account.get('Name', ''),
                         "natural_disc": account.get('Natural_DISC__c', ''),
-                        "adaptive_disc": account.get('Adaptive_DISC__c', '')
+                        "adaptive_disc": account.get('Adaptive_DISC__c', ''),
+                        "natural_d_score": account.get('Natural_D_Score__c'),
+                        "natural_i_score": account.get('Natural_I_Score__c'),
+                        "natural_s_score": account.get('Natural_S_Score__c'),
+                        "natural_c_score": account.get('Natural_C_Score__c'),
+                        "adaptive_d_score": account.get('Adaptive_D_Score__c'),
+                        "adaptive_i_score": account.get('Adaptive_I_Score__c'),
+                        "adaptive_s_score": account.get('Adaptive_S_Score__c'),
+                        "adaptive_c_score": account.get('Adaptive_C_Score__c')
                     }
             except Exception as e:
                 # Try without DISC fields
