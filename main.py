@@ -1408,8 +1408,8 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
         sf = sf_client.get_client()
         
         # Escape emails for safe SOQL queries
-        seller_email_escaped = escape_soql_string(seller_email.lower())
-        prospect_email_escaped = escape_soql_string(prospect_email.lower())
+        seller_email_escaped = escape_soql_string(seller_email)
+        prospect_email_escaped = escape_soql_string(prospect_email)
         
         # Query for DISC profiles - first try Contact, then Lead
         # Note: DISC fields might be custom fields like DISC_D__c, DISC_I__c, etc.
@@ -1420,8 +1420,7 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
             # Try Contact first
             contact_soql = f"""
             SELECT Id, Email, FirstName, LastName, Name,
-                   DISC_D__c, DISC_I__c, DISC_S__c, DISC_C__c,
-                   DISC_Profile__c, DISC_Type__c
+                   Natural_DISC__c, Adaptive_DISC__c
             FROM Contact 
             WHERE Email = '{email_escaped}'
             LIMIT 1
@@ -1439,12 +1438,8 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
                         "firstName": contact.get('FirstName', ''),
                         "lastName": contact.get('LastName', ''),
                         "name": contact.get('Name', ''),
-                        "disc_d": contact.get('DISC_D__c', 0),
-                        "disc_i": contact.get('DISC_I__c', 0),
-                        "disc_s": contact.get('DISC_S__c', 0),
-                        "disc_c": contact.get('DISC_C__c', 0),
-                        "disc_profile": contact.get('DISC_Profile__c', ''),
-                        "disc_type": contact.get('DISC_Type__c', '')
+                        "natural_disc": contact.get('Natural_DISC__c', ''),
+                        "adaptive_disc": contact.get('Adaptive_DISC__c', '')
                     }
             except Exception as e:
                 # DISC fields might not exist or have different names
@@ -1470,12 +1465,8 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
                             "firstName": contact.get('FirstName', ''),
                             "lastName": contact.get('LastName', ''),
                             "name": contact.get('Name', ''),
-                            "disc_d": None,
-                            "disc_i": None,
-                            "disc_s": None,
-                            "disc_c": None,
-                            "disc_profile": None,
-                            "disc_type": None,
+                            "natural_disc": None,
+                            "adaptive_disc": None,
                             "error": "DISC profile data not available"
                         }
                 except Exception as e2:
@@ -1484,8 +1475,7 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
             # Try Lead if Contact not found
             lead_soql = f"""
             SELECT Id, Email, FirstName, LastName, Name,
-                   DISC_D__c, DISC_I__c, DISC_S__c, DISC_C__c,
-                   DISC_Profile__c, DISC_Type__c
+                   Natural_DISC__c, Adaptive_DISC__c
             FROM Lead 
             WHERE Email = '{email_escaped}'
             LIMIT 1
@@ -1503,12 +1493,8 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
                         "firstName": lead.get('FirstName', ''),
                         "lastName": lead.get('LastName', ''),
                         "name": lead.get('Name', ''),
-                        "disc_d": lead.get('DISC_D__c', 0),
-                        "disc_i": lead.get('DISC_I__c', 0),
-                        "disc_s": lead.get('DISC_S__c', 0),
-                        "disc_c": lead.get('DISC_C__c', 0),
-                        "disc_profile": lead.get('DISC_Profile__c', ''),
-                        "disc_type": lead.get('DISC_Type__c', '')
+                        "natural_disc": lead.get('Natural_DISC__c', ''),
+                        "adaptive_disc": lead.get('Adaptive_DISC__c', '')
                     }
             except Exception as e:
                 # Try without DISC fields
@@ -1533,12 +1519,8 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
                             "firstName": lead.get('FirstName', ''),
                             "lastName": lead.get('LastName', ''),
                             "name": lead.get('Name', ''),
-                            "disc_d": None,
-                            "disc_i": None,
-                            "disc_s": None,
-                            "disc_c": None,
-                            "disc_profile": None,
-                            "disc_type": None,
+                            "natural_disc": None,
+                            "adaptive_disc": None,
                             "error": "DISC profile data not available"
                         }
                 except Exception as e2:
@@ -1548,11 +1530,10 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
             # Note: Person Accounts use PersonEmail, Business Accounts might use custom Email__c
             account_soql = f"""
             SELECT Id, PersonEmail, Name, FirstName, LastName,
-                   DISC_D__c, DISC_I__c, DISC_S__c, DISC_C__c,
-                   DISC_Profile__c, DISC_Type__c
+                   Natural_DISC__c, Adaptive_DISC__c
             FROM Account 
-            WHERE PersonEmail = '{email_escaped}'
-            OR Email__c = '{email_escaped}'
+            WHERE LOWER(PersonEmail) = LOWER('{email_escaped}')
+            OR LOWER(Email__c) = LOWER('{email_escaped}')
             LIMIT 1
             """
             
@@ -1568,12 +1549,8 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
                         "firstName": account.get('FirstName', ''),
                         "lastName": account.get('LastName', ''),
                         "name": account.get('Name', ''),
-                        "disc_d": account.get('DISC_D__c', 0),
-                        "disc_i": account.get('DISC_I__c', 0),
-                        "disc_s": account.get('DISC_S__c', 0),
-                        "disc_c": account.get('DISC_C__c', 0),
-                        "disc_profile": account.get('DISC_Profile__c', ''),
-                        "disc_type": account.get('DISC_Type__c', '')
+                        "natural_disc": account.get('Natural_DISC__c', ''),
+                        "adaptive_disc": account.get('Adaptive_DISC__c', '')
                     }
             except Exception as e:
                 # Try without DISC fields
@@ -1583,8 +1560,8 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
                 basic_account_soql = f"""
                 SELECT Id, PersonEmail, Name, FirstName, LastName
                 FROM Account 
-                WHERE PersonEmail = '{email_escaped}'
-                OR Email__c = '{email_escaped}'
+                WHERE LOWER(PersonEmail) = LOWER('{email_escaped}')
+                OR LOWER(Email__c) = LOWER('{email_escaped}')
                 LIMIT 1
                 """
                 
@@ -1600,12 +1577,8 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
                             "firstName": account.get('FirstName', ''),
                             "lastName": account.get('LastName', ''),
                             "name": account.get('Name', ''),
-                            "disc_d": None,
-                            "disc_i": None,
-                            "disc_s": None,
-                            "disc_c": None,
-                            "disc_profile": None,
-                            "disc_type": None,
+                            "natural_disc": None,
+                            "adaptive_disc": None,
                             "error": "DISC profile data not available"
                         }
                 except Exception as e2:
