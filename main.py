@@ -748,20 +748,14 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 "seller": {
                     "name": seller_profile.get('name', 'Unknown'),
                     "email": seller_profile.get('email', ''),
-                    "disc_d": seller_profile.get('disc_d', 0),
-                    "disc_i": seller_profile.get('disc_i', 0),
-                    "disc_s": seller_profile.get('disc_s', 0),
-                    "disc_c": seller_profile.get('disc_c', 0),
-                    "type": seller_profile.get('disc_type') or seller_profile.get('calculated_type', 'Unknown')
+                    "natural_disc": seller_profile.get('natural_disc', ''),
+                    "adaptive_disc": seller_profile.get('adaptive_disc', '')
                 },
                 "prospect": {
                     "name": prospect_profile.get('name', 'Unknown'),
                     "email": prospect_profile.get('email', ''),
-                    "disc_d": prospect_profile.get('disc_d', 0),
-                    "disc_i": prospect_profile.get('disc_i', 0),
-                    "disc_s": prospect_profile.get('disc_s', 0),
-                    "disc_c": prospect_profile.get('disc_c', 0),
-                    "type": prospect_profile.get('disc_type') or prospect_profile.get('calculated_type', 'Unknown')
+                    "natural_disc": prospect_profile.get('natural_disc', ''),
+                    "adaptive_disc": prospect_profile.get('adaptive_disc', '')
                 }
             }
             
@@ -772,6 +766,8 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             Data: {json.dumps(disc_summary, indent=2)}
             
             User: {user_name}
+            
+            Note: Natural DISC represents their authentic personality style, while Adaptive DISC shows how they adjust their behavior in their current environment.
             
             Generate a professional sales strategy that includes:
             1. Brief profile summaries for both people
@@ -1026,9 +1022,10 @@ def format_disc_sales_strategy_simple(seller_profile: dict, prospect_profile: di
     seller_email = seller_profile.get('email', '')
     response += f"*Seller:* {seller_name} ({seller_email})\n"
     
-    if seller_profile.get('disc_d') is not None:
-        response += f"• D: {seller_profile.get('disc_d', 0)}% | I: {seller_profile.get('disc_i', 0)}% | S: {seller_profile.get('disc_s', 0)}% | C: {seller_profile.get('disc_c', 0)}%\n"
-        response += f"• Type: {seller_profile.get('calculated_type', 'Unknown')}\n"
+    if seller_profile.get('natural_disc'):
+        response += f"• Natural DISC: {seller_profile.get('natural_disc', '')}\n"
+        if seller_profile.get('adaptive_disc'):
+            response += f"• Adaptive DISC: {seller_profile.get('adaptive_disc', '')}\n"
     else:
         response += "• DISC profile data not available\n"
     
@@ -1039,39 +1036,19 @@ def format_disc_sales_strategy_simple(seller_profile: dict, prospect_profile: di
     prospect_email = prospect_profile.get('email', '')
     response += f"*Prospect:* {prospect_name} ({prospect_email})\n"
     
-    if prospect_profile.get('disc_d') is not None:
-        response += f"• D: {prospect_profile.get('disc_d', 0)}% | I: {prospect_profile.get('disc_i', 0)}% | S: {prospect_profile.get('disc_s', 0)}% | C: {prospect_profile.get('disc_c', 0)}%\n"
-        response += f"• Type: {prospect_profile.get('calculated_type', 'Unknown')}\n"
+    if prospect_profile.get('natural_disc'):
+        response += f"• Natural DISC: {prospect_profile.get('natural_disc', '')}\n"
+        if prospect_profile.get('adaptive_disc'):
+            response += f"• Adaptive DISC: {prospect_profile.get('adaptive_disc', '')}\n"
     else:
         response += "• DISC profile data not available\n"
     
     response += "\n*Basic Strategy:*\n"
     
-    # Basic compatibility insights based on DISC scores
-    if seller_profile.get('disc_d') is not None and prospect_profile.get('disc_d') is not None:
-        # High D prospect
-        if prospect_profile.get('disc_d', 0) > 65:
-            response += "• Be direct and results-focused\n"
-            response += "• Lead with bottom-line benefits\n"
-            response += "• Keep presentations brief\n"
-        
-        # High I prospect  
-        if prospect_profile.get('disc_i', 0) > 65:
-            response += "• Build personal rapport first\n"
-            response += "• Use stories and testimonials\n"
-            response += "• Make it fun and engaging\n"
-            
-        # High S prospect
-        if prospect_profile.get('disc_s', 0) > 65:
-            response += "• Take time to build trust\n"
-            response += "• Emphasize stability and support\n"
-            response += "• Avoid high-pressure tactics\n"
-            
-        # High C prospect
-        if prospect_profile.get('disc_c', 0) > 65:
-            response += "• Provide detailed information\n"
-            response += "• Use data and logic\n"
-            response += "• Allow time for analysis\n"
+    # Basic compatibility insights based on DISC profiles
+    if seller_profile.get('natural_disc') and prospect_profile.get('natural_disc'):
+        response += "• Use GPT-4 for detailed DISC-based sales strategy\n"
+        response += "• Natural and Adaptive profiles provide insight into authentic vs situational behavior\n"
     else:
         response += "• Complete DISC assessments needed for detailed strategy\n"
     
@@ -1611,53 +1588,7 @@ def _fetch_disc_profiles_for_sales_strategy(seller_email: str, prospect_email: s
                 "prospect": prospect_profile
             }
         
-        # Calculate DISC types if not provided
-        def get_disc_type(profile):
-            if profile.get('disc_type'):
-                return profile['disc_type']
-            
-            # Calculate dominant traits
-            d = profile.get('disc_d', 0) or 0
-            i = profile.get('disc_i', 0) or 0
-            s = profile.get('disc_s', 0) or 0
-            c = profile.get('disc_c', 0) or 0
-            
-            # Find the two highest scores
-            scores = [('D', d), ('I', i), ('S', s), ('C', c)]
-            scores.sort(key=lambda x: x[1], reverse=True)
-            
-            if scores[0][1] > 0:
-                primary = scores[0][0]
-                secondary = scores[1][0] if scores[1][1] > 50 else ''
-                
-                # Common DISC type descriptions
-                type_map = {
-                    'DI': 'Decisive Influencer',
-                    'DC': 'Decisive Analyst',
-                    'DS': 'Decisive Supporter',
-                    'ID': 'Enthusiastic Driver',
-                    'IS': 'Enthusiastic Supporter',
-                    'IC': 'Enthusiastic Analyst',
-                    'SD': 'Supportive Driver',
-                    'SI': 'Supportive Influencer',
-                    'SC': 'Supportive Analyst',
-                    'CD': 'Analytical Driver',
-                    'CI': 'Analytical Influencer',
-                    'CS': 'Analytical Supporter',
-                    'D': 'Driver',
-                    'I': 'Influencer',
-                    'S': 'Supporter',
-                    'C': 'Analyst'
-                }
-                
-                key = primary + secondary
-                return type_map.get(key, type_map.get(primary, 'Unknown'))
-            
-            return 'Unknown'
-        
-        # Add calculated types
-        seller_profile['calculated_type'] = get_disc_type(seller_profile)
-        prospect_profile['calculated_type'] = get_disc_type(prospect_profile)
+        # No need to calculate types - we have Natural and Adaptive DISC profiles
         
         return {
             "success": True,
