@@ -796,14 +796,15 @@ async def handle_prm_command(text: str, user_name: str) -> str:
             
             Format using Slack markdown with emojis. Be specific and actionable.
             Focus on practical sales tactics, not generic advice.
-            
+            Limit to 1000 tokens for the response
+            Tailor the responses to fit sales people from the Tony Robbins world
+            Any examples should include events or coaching that might be relevant to the customer's DISC profile
+
             IMPORTANT FORMATTING RULES FOR SLACK:
             - Use *text* for emphasis (single asterisks only)
             - NEVER use **double asterisks** - they don't work in Slack
             - Use bullet points with •
             - Keep it professional but engaging
-            - Limit to 1000 tokens for the response
-            - Tailor the responses to fit sales people from the Tony Robbins world
             """
             
             try:
@@ -811,7 +812,7 @@ async def handle_prm_command(text: str, user_name: str) -> str:
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
-                        {"role": "system", "content": "You are a professional sales strategist expert in DISC personality assessments. Provide actionable sales strategies based on DISC profiles."},
+                        {"role": "system", "content": "You are a professional sales strategist expert in DISC personality assessments. Provide actionable sales strategies based on DISC profiles. Tailor responses to fit sales people from the Tony Robbins world."},
                         {"role": "user", "content": gpt_prompt}
                     ],
                     max_tokens=1000,
