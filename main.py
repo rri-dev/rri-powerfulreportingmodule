@@ -8,7 +8,6 @@ from typing import Dict, Any
 from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.staticfiles import StaticFiles
 import openai
 from lib.salesforce_client import SalesforceClient
 from lib.auth import auth_config, rate_limiter, security_logger
@@ -45,8 +44,8 @@ def auth_middleware(request):
 mcp = FastMCP("Today's Opportunities MCP Server", middleware=[auth_middleware])
 sf_client = SalesforceClient()
 
-# Mount static files for documentation
-mcp.app.mount("/public", StaticFiles(directory="public", html=True), name="public")
+# Note: FastMCP doesn't expose the underlying app for static file mounting
+# Static files need to be served separately or through a different approach
 
 # Initialize OpenAI client
 openai.api_key = os.getenv('OPENAI_API_KEY')
