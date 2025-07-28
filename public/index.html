@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRM Documentation</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+        }
+        .endpoint {
+            background-color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 4px solid #3498db;
+        }
+        code {
+            background-color: #f8f9fa;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Powerful Reporting Module (PRM) Documentation</h1>
+        
+        <p>Welcome to the PRM documentation. This system provides integration between Salesforce and Slack for sales reporting and DISC-based sales strategies.</p>
+        
+        <h2>Overview</h2>
+        <p>The PRM system is a Model Context Protocol (MCP) server that provides tools for:</p>
+        <ul>
+            <li>Fetching Salesforce opportunities</li>
+            <li>Retrieving upcoming events</li>
+            <li>Getting event credits information</li>
+            <li>Running Salesforce reports</li>
+            <li>Generating DISC-based sales strategies</li>
+        </ul>
+        
+        <h2>Available Endpoints</h2>
+        
+        <div class="endpoint">
+            <h3>MCP Server</h3>
+            <p><strong>Path:</strong> <code>/mcp</code></p>
+            <p><strong>Description:</strong> Main MCP server endpoint for tool interactions</p>
+        </div>
+        
+        <div class="endpoint">
+            <h3>Static Documentation</h3>
+            <p><strong>Path:</strong> <code>/public</code></p>
+            <p><strong>Description:</strong> This documentation and other static files</p>
+        </div>
+        
+        <h2>Available Tools</h2>
+        <ul>
+            <li><code>get_todays_opportunities</code> - Get all opportunities closed today</li>
+            <li><code>get_yesterdays_opportunities</code> - Get all opportunities closed yesterday</li>
+            <li><code>get_upcoming_events</code> - Get upcoming events for the next 3 months</li>
+            <li><code>get_event_credits</code> - Get event credits information</li>
+            <li><code>get_salesforce_report</code> - Run a Salesforce report by name</li>
+            <li><code>get_disc_sales_strategy</code> - Get DISC-based sales strategy</li>
+        </ul>
+        
+        <h2>Authentication</h2>
+        <p>The API requires authentication using an API key in the <code>x-api-key</code> header.</p>
+        
+        <h2>Environment Variables</h2>
+        <ul>
+            <li><code>GPT_MODEL</code> - The OpenAI model to use (default: gpt-4o-mini)</li>
+            <li><code>OPENAI_API_KEY</code> - OpenAI API key</li>
+            <li><code>SALESFORCE_USERNAME</code> - Salesforce username</li>
+            <li><code>SALESFORCE_PASSWORD</code> - Salesforce password</li>
+            <li><code>SALESFORCE_SECURITY_TOKEN</code> - Salesforce security token</li>
+        </ul>
+        
+        <h2>More Information</h2>
+        <p>For more detailed documentation, please check the <a href="/public/docs/">docs folder</a>.</p>
+    </div>
+</body>
+</html>
